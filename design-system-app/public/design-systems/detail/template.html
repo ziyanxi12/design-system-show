@@ -538,11 +538,9 @@
           '<div class="info"><div class="nm" title="' + esc(t.name) + '">' + esc(t.label || t.name) + '</div><div class="tk" title="' + esc(t.token || "") + '">' + esc(t.token || "") + '</div></div></div>';
       };
       box.innerHTML = sectionShell("color", c.title, esc(c.desc)) +
-        (c.palettes || []).map(p => '<div class="sub-block"><div class="sub-title">' + esc(p.title) + '</div>' +
-          '<div class="palette">' + p.steps.map(s => {
-            const l = isLight(s.value);
-            return '<div class="cell" style="background:' + s.value + ';color:' + (l ? "rgba(0,0,0,.75)" : "#fff") + '" data-copy="' + s.value + '" data-label="' + s.name + '" title="' + esc(s.token || "") + '"><span>' + esc(s.name) + '</span>' + (s.token ? '<span style="opacity:.7">' + esc(s.token) + '</span>' : "") + '<span>' + esc(s.value.toLowerCase()) + '</span></div>';
-          }).join("") + '</div></div>').join("") +
+        // 基础色阶和语义色统一用卡片展示，色阶按从浅到深的顺序排
+        (c.palettes || []).map(p => '<div class="sub-block"><div class="sub-title">' + esc(p.title) + '<small>' + p.steps.length + ' 个 · 基础色阶</small></div>' +
+          '<div class="swatches">' + p.steps.map(s => sw(s)).join("") + '</div></div>').join("") +
         c.groups.map(g => '<div class="sub-block">' + ((c.palettes || []).length && c.groups.length === 1 ? "" : '<div class="sub-title">' + esc(g.title) + '<small>' + g.tokens.length + ' 个' + (g.desc ? ' · ' + esc(g.desc) : "") + '</small></div>') +
           '<div class="swatches">' + g.tokens.map(t => sw(t)).join("") + '</div></div>').join("") +
         rulesHtml(c.rules);
