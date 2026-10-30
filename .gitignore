@@ -1,0 +1,4 @@
+# 一期仅上传 design-system-app；外部目录（DESIGN.md / script / data / assets / skills / index.html 等）待定后再放行
+/*
+!/.gitignore
+!/design-system-app/

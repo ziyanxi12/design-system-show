@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Design Token Viewer</title>
+  <style>
+    :root {
+      --brand: #0A59F7;
+      --brand-08: rgba(10, 89, 247, 0.08);
+      --brand-12: rgba(10, 89, 247, 0.12);
+      --text-1: rgba(0, 0, 0, 0.9);
+      --text-2: rgba(0, 0, 0, 0.6);
+      --text-3: rgba(0, 0, 0, 0.4);
+      --text-primary: #191919;
+      --text-secondary: #777777;
+      --fill-1: rgba(0, 0, 0, 0.05);
+      --fill-3: rgba(0, 0, 0, 0.03);
+      --border-1: rgba(0, 0, 0, 0.1);
+      --bg-page: #F3F4F6;
+      --shadow-card: 0 1px 6px 0 rgba(0, 0, 0, 0.078);
+      --font: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 22px;
+      color: var(--text-1);
+      background: var(--bg-page);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+    .mono { font-family: "SF Mono", Menlo, monospace; }
+
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ---------- 头部（与 demo .dsd-head 对齐） ---------- */
+    .head {
+      background: #fff; padding: 22px 24px 0 40px; height: 134px; flex-shrink: 0;
+    }
+    .head .crumb { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); height: 24px; font-size: 14px; margin-left: -4px; }
+    .head .crumb .back { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--text-secondary); cursor: pointer; }
+    .head .crumb .back:hover { background: var(--fill-1); }
+    .head .crumb .cur { color: var(--text-primary); }
+    .head .crumb span.sep { color: var(--text-3); }
+    .head .ds-title { margin-top: 18px; display: flex; align-items: center; gap: 12px; }
+    .head .ds-logo { width: 42px; height: 42px; border-radius: 10px; background: var(--brand); display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+    .head .ds-logo svg { width: 22px; height: 22px; }
+    .head .ds-name { font-size: 16px; line-height: 24px; font-weight: 500; color: var(--text-primary); }
+    .head .ds-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; color: var(--text-secondary); font-size: 14px; line-height: 20px; }
+    .head .ds-meta .bar { width: 1px; height: 12px; background: var(--border-1); }
+    .head .ds-meta .avatar { width: 16px; height: 16px; border-radius: 50%; background: var(--brand); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; }
+    .head .ds-meta .usage-ic { width: 14px; height: 14px; color: var(--text-secondary); }
+    .head .ds-meta .usage-ic svg { width: 14px; height: 14px; }
+
+    /* ---------- 主体（与 demo .dsd-body 对齐） ---------- */
+    .body { flex: 1; min-height: 0; display: flex; gap: 10px; padding: 24px 24px 0; }
+
+    .nav {
+      width: 216px; flex-shrink: 0; align-self: flex-start;
+      background: #fff; border-radius: 16px; padding: 12px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .nav button {
+      height: 38px; border-radius: 8px; display: flex; align-items: center; gap: 12px;
+      padding: 0 12px; color: var(--text-primary); font-size: 14px; text-align: left;
+    }
+    .nav button:hover { background: var(--fill-3); }
+    .nav button.on { background: var(--brand-08); color: var(--brand); }
+    .nav-ic { width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #191919; }
+    .nav-ic svg { width: 14px; height: 14px; }
+    .nav button.on .nav-ic { color: var(--brand); }
+    .nav-sub button .nav-ic { display: none; }
+
+    .nav-grp { display: flex; flex-direction: column; }
+    .nav-grp > button .chev { margin-left: auto; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--text-3); transition: transform .15s; }
+    .nav-grp > button .chev svg { width: 14px; height: 14px; }
+    .nav-grp:not(.open) > button .chev { transform: rotate(-90deg); }
+    .nav-sub { display: none; flex-direction: column; gap: 2px; margin-top: 4px; max-height: 320px; overflow: auto; }
+    .nav-grp.open .nav-sub { display: flex; }
+    .nav-sub button { height: 32px; padding: 0 12px 0 40px; font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 32px; }
+    .nav-sub button.on { background: none; color: var(--brand); font-weight: 500; }
+
+    .main { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 24px; padding: 0 0 24px; scrollbar-width: thin; }
+    .main::-webkit-scrollbar { width: 6px; }
+    .main::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 3px; }
+
+    /* ---------- 分区卡片（与 demo .sec-card 对齐） ---------- */
+    .sec-card { flex-shrink: 0; background: #fff; border-radius: 16px; padding: 24px; }
+    .sec-label { font-size: 13px; line-height: 20px; color: var(--text-secondary); }
+    .sec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .sec-title { margin-top: 12px; font-size: 24px; line-height: 32px; font-weight: 700; color: var(--text-primary); }
+    .sec-desc { margin-top: 12px; color: var(--text-primary); }
+    .sec-divider { height: 1px; background: var(--border-1); margin: 24px 0; }
+    .sec-tools { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    .overview-text { margin-top: 12px; font-size: 15px; line-height: 28px; color: var(--text-primary); max-width: 960px; white-space: pre-wrap; }
+
+    .sub-title { font-size: 14px; line-height: 22px; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
+    .sub-title small { color: var(--text-3); font-size: 12px; }
+    .sub-block + .sub-block { margin-top: 32px; }
+
+    .toast-wrap { position: fixed; left: 50%; top: 72px; transform: translateX(-50%); z-index: 200; pointer-events: none; }
+    .toast {
+      display: flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px;
+      background: rgba(25, 25, 25, .92); color: #fff; font-size: 14px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    .toast { animation: toastIn .2s ease-out; }
+
+    .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-3); font-size: 16px; }
+    .error { display: flex; align-items: center; justify-content: center; height: 100%; color: #E84026; font-size: 15px; text-align: center; padding: 40px; }
+
+    /* ---------- 颜色 ---------- */
+    .palette { display: flex; height: 72px; border-radius: 12px; overflow: hidden; }
+    .palette .cell { flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; line-height: 20px; cursor: pointer; transition: flex .2s; }
+    .palette .cell:hover { flex: 1.25; }
+
+    .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); gap: 12px; }
+    .swatch { border: 1px solid var(--border-1); border-radius: 8px; overflow: hidden; cursor: pointer; transition: box-shadow .15s, transform .15s; background: #fff; }
+    .swatch:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); transform: translateY(-1px); }
+    .swatch .chip-c { height: 94px; position: relative; display: flex; align-items: flex-end; padding: 8px; font-size: 12px; line-height: 20px; }
+    .swatch .chip-c.light-c { box-shadow: inset 0 -1px 0 var(--border-1); }
+    .swatch .chip-c .copy { position: absolute; right: 8px; top: 8px; opacity: 0; transition: opacity .15s; width: 16px; height: 16px; }
+    .swatch .chip-c .copy svg { width: 16px; height: 16px; }
+    .swatch:hover .chip-c .copy { opacity: .9; }
+    .swatch .chip-c.checker { background-image: linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0; }
+    .swatch .chip-c .fill { position: absolute; inset: 0; }
+    .swatch .chip-c span { position: relative; }
+    .swatch .info { padding: 10px 12px 12px; }
+    .swatch .nm { font-size: 14px; line-height: 22px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .swatch .tk { font-size: 14px; line-height: 22px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ---------- 字体 ---------- */
+    .fam-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .fam { border: 1px solid var(--border-1); border-radius: 12px; padding: 20px; display: flex; align-items: center; gap: 20px; }
+    .fam .aa { font-size: 56px; line-height: 64px; font-weight: 500; color: var(--text-primary); }
+    .fam .fn { font-weight: 500; }
+    .fam .fw { font-size: 12px; color: var(--text-secondary); }
+
+    .type-table { border: 1px solid var(--border-1); border-radius: 12px; overflow: hidden; }
+    .type-row { display: grid; grid-template-columns: 220px 160px 1fr 40px; align-items: center; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--border-1); cursor: pointer; }
+    .type-row:first-child { border-top: 0; }
+    .type-row:hover { background: var(--fill-3); }
+    .type-row .tn { font-weight: 500; font-size: 14px; line-height: 22px; }
+    .type-row .tv { font-size: 12px; color: var(--text-secondary); line-height: 18px; }
+    .type-row .sample { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+    .type-row .ic { width: 16px; height: 16px; color: var(--text-3); opacity: 0; }
+    .type-row:hover .ic { opacity: 1; }
+    .type-row .ic svg { width: 16px; height: 16px; }
+    .sample-input { height: 32px; width: 280px; border-radius: 8px; background: var(--fill-3); padding: 0 10px; font-size: 13px; border: 1px solid transparent; outline: 0; color: var(--text-1); font-family: inherit; }
+    .sample-input:focus { border-color: var(--brand); background: #fff; }
+
+    /* ---------- 间距 / 阴影 ---------- */
+    .sp-list { border: 1px solid var(--border-1); border-radius: 12px; overflow: hidden; }
+    .sp-row { display: grid; grid-template-columns: 200px 80px 1fr 1.2fr; gap: 16px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border-1); cursor: pointer; }
+    .sp-row:first-child { border-top: 0; }
+    .sp-row:hover { background: var(--fill-3); }
+    .sp-row .nm { font-weight: 500; font-family: "SF Mono", Menlo, var(--font); font-size: 13px; }
+    .sp-row .vl { color: var(--text-secondary); font-size: 13px; }
+    .sp-row .bar { height: 16px; display: flex; align-items: center; }
+    .sp-row .bar i { display: block; height: 16px; background: rgba(10,89,247,.18); border-left: 2px solid var(--brand); border-right: 2px solid var(--brand); border-radius: 2px; }
+    .sp-row .ds { color: var(--text-secondary); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sp-row.sh-row { grid-template-columns: 88px 200px 1.4fr 1fr; padding: 16px 20px; }
+    .sh-demo { width: 72px; height: 48px; border-radius: 8px; overflow: hidden; background: #F5F6F8; display: flex; align-items: center; justify-content: center; }
+    .sh-demo i { display: block; width: 44px; height: 28px; border-radius: 6px; background: #fff; }
+    .sh-val { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
+
+    .seg-sm { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--fill-1); }
+    .seg-sm button { height: 26px; padding: 0 12px; border-radius: 999px; color: var(--text-2); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+    .seg-sm button .ic { width: 14px; height: 14px; }
+    .seg-sm button.on { background: #fff; color: var(--brand); font-weight: 500; box-shadow: var(--shadow-card); }
+    .scene-tabs { margin-bottom: 12px; }
+
+    /* ---------- 圆角 ---------- */
+    .rad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .rad { border: 1px solid var(--border-1); border-radius: 12px; padding: 20px 16px 14px; display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: box-shadow .15s; position: relative; }
+    .rad:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+    .rad .demo { width: 88px; height: 88px; background: rgba(10,89,247,.1); border: 2px solid var(--brand); }
+    .rad .nm { margin-top: 14px; font-weight: 500; font-size: 13px; font-family: "SF Mono", Menlo, var(--font); }
+    .rad .vl { font-size: 12px; color: var(--text-secondary); text-align: center; }
+
+    /* ---------- 使用规则 ---------- */
+    .rules { margin-top: 32px; padding: 16px 20px; border-radius: 12px; background: var(--fill-3); }
+    .rules h4 { font-size: 14px; font-weight: 500; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .rules h4 .ic { width: 16px; height: 16px; color: var(--brand); }
+    .rules h4 .ic svg { width: 16px; height: 16px; }
+    .rules li { position: relative; padding-left: 14px; color: var(--text-2); font-size: 13px; line-height: 22px; list-style: none; }
+    .rules li::before { content: ""; position: absolute; left: 2px; top: 9px; width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
+    .rules code, .code { font-family: "SF Mono", Menlo, monospace; font-size: 12px; background: rgba(0,0,0,.05); padding: 0 4px; border-radius: 4px; }
+
+    /* ---------- 空状态 ---------- */
+    .sec-empty { margin-top: 24px; padding: 40px 24px; border-radius: 16px; border: 1px dashed rgba(0,0,0,.14); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-3); text-align: center; }
+    .sec-empty .ei { width: 56px; height: 56px; border-radius: 16px; background: var(--fill-3); display: flex; align-items: center; justify-content: center; color: rgba(0,0,0,.25); margin-bottom: 4px; }
+    .sec-empty .ei .ic { width: 26px; height: 26px; }
+    .sec-empty .ei .ic svg { width: 22px; height: 22px; }
+    .sec-empty b { color: var(--text-2); font-weight: 500; font-size: 15px; }
+    .sec-empty span { color: var(--text-3); font-size: 13px; line-height: 20px; max-width: 420px; }
+
+    /* ---------- 通用按钮 / 标签 ---------- */
+    .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+    .btn .ic { width: 16px; height: 16px; }
+    .btn .ic svg { width: 14px; height: 14px; }
+    .btn-ghost { background: rgba(0,0,0,.05); color: var(--text-1); }
+    .btn-ghost:hover { background: rgba(0,0,0,.09); }
+    .btn-primary { background: var(--brand); color: #fff; }
+    .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; line-height: 20px; background: var(--fill-1); color: var(--text-2); }
+    .tag.brand { background: var(--brand-08); color: var(--brand); }
+    .tag.gray { background: var(--fill-1); color: var(--text-3); }
+
+    /* ---------- 组件：三列表格 ---------- */
+    .src-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; border: 1px solid var(--border-1); color: var(--text-2); background: #fff; white-space: nowrap; }
+    .src-badge.ok { color: #3E9C3A; border-color: rgba(62,156,58,.35); background: rgba(100,187,92,.08); }
+    .src-badge.ai { color: var(--brand); border: 1px dashed rgba(10,89,247,.45); background: var(--brand-08); }
+    .src-badge.shot { color: #B45309; border: 1px dashed rgba(180,83,9,.4); background: rgba(245,158,11,.08); }
+    .src-badge.gray { color: var(--text-3); }
+    .ct-table { border: 1px solid var(--border-1); border-radius: 12px; overflow: hidden; }
+    .ct-row { display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; border-top: 1px solid var(--border-1); }
+    .ct-row:first-child { border-top: 0; }
+    .ct-row > div { padding: 20px; min-width: 0; }
+    .ct-row > div + div { border-left: 1px solid var(--border-1); }
+    .ct-th > div { padding: 12px 20px; font-size: 13px; color: var(--text-3); background: var(--fill-3); }
+    .ct-name .nm { font-size: 15px; font-weight: 500; color: var(--text-primary); }
+    .ct-name .props { margin-top: 6px; font-size: 12px; color: var(--text-3); line-height: 18px; }
+    .ct-name .src-badge { margin-top: 10px; }
+    .ct-preview { padding: 0 !important; }
+    .ct-preview .cp-frame { width: 100%; min-height: 120px; border: 0; display: block; }
+    .ct-preview > .pv, .ct-preview > .ct-shots, .ct-preview > .ct-empty { margin: 20px; }
+    .ct-shots { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ct-shots img { height: 56px; border-radius: 8px; background: #F2F3F5; transition: transform .15s; }
+    .ct-shots img:hover { transform: scale(1.6); position: relative; z-index: 2; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+    .ct-empty { border: 1px dashed rgba(0,0,0,.16); border-radius: 8px; padding: 20px; text-align: center; color: var(--text-3); font-size: 13px; }
+    .ct-map { display: flex; flex-direction: column; gap: 8px; font-size: 12px; position: relative; }
+    .ct-map-h { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .ct-map-h b { font-weight: 500; color: var(--text-primary); }
+    .ct-map-h .map-st { margin-left: auto; }
+    .map-ic { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+    .map-ic.pixso { background: linear-gradient(135deg, #6E5BFF, #2F7BFF); }
+    .map-ic.code { background: #191919; font-size: 9px; }
+    .map-ic.tok { background: var(--brand); }
+    .map-st { font-size: 12px; font-weight: 400; line-height: 20px; padding: 0 8px; border-radius: 999px; }
+    .map-st.ok { background: rgba(100, 187, 92, .12); color: #3E9C3A; }
+    .map-st.warn { background: rgba(245, 158, 11, .12); color: #B45309; }
+    .map-st.miss { background: var(--fill-1); color: var(--text-3); }
+    .map-kv { display: grid; grid-template-columns: 56px 1fr; gap: 8px; font-size: 13px; align-items: center; }
+    .map-kv span { color: var(--text-3); }
+    .map-kv b { font-weight: 400; color: var(--text-1); }
+    .map-props { display: flex; flex-wrap: wrap; gap: 6px; }
+    .map-prop { font-size: 12px; padding: 1px 8px; border-radius: 6px; background: var(--brand-08); color: var(--brand); }
+    .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
+    .map-btn { align-self: flex-start; height: 28px; font-size: 13px; margin-top: auto; }
+    .ct-map.none .ct-map-h b { color: var(--text-3); font-weight: 400; }
+    .ct-map-note { color: var(--text-3); line-height: 18px; }
+    .ct-sample { align-self: flex-start; }
+    .ct-row { grid-template-columns: clamp(150px, 13vw, 240px) minmax(0, 1fr) clamp(210px, 17vw, 300px); }
+    .ct-row > div { padding: 16px; }
+
+    /* ---------- token 推导预览（引用主题变量） ---------- */
+    .pv { font-family: var(--ff); color: var(--t1); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; font-size: 13px; }
+    .pv-btn { height: 32px; padding: 0 16px; border-radius: var(--r-a); border: 1px solid transparent; font: inherit; display: inline-flex; align-items: center; gap: 6px; }
+    .pv-btn.filled { background: var(--p); color: var(--on-p); }
+    .pv-btn.outlined { border-color: var(--p); color: var(--p); background: transparent; }
+    .pv-btn.text { color: var(--p); background: transparent; }
+    .pv-btn.danger.filled { background: var(--err); }
+    .pv-btn.danger.outlined { border-color: var(--err); color: var(--err); }
+    .pv-btn.default.filled { background: rgba(0,0,0,.06); color: var(--t1); }
+    .pv-btn.default.outlined { border-color: var(--bd); color: var(--t1); }
+    .pv-btn.lg { height: 40px; font-size: 15px; } .pv-btn.sm { height: 24px; padding: 0 10px; font-size: 12px; }
+    .pv-btn[disabled] { opacity: .4; }
+    .pv-input { height: 32px; width: 200px; border: 1px solid var(--bd); border-radius: var(--r-a); padding: 0 10px; display: flex; align-items: center; color: var(--t2); background: var(--card, #fff); }
+    .pv-input.err { border-color: var(--err); }
+    .pv-input.focus { border-color: var(--p); box-shadow: 0 0 0 2px var(--p-soft); }
+    .pv-switch { width: 36px; height: 20px; border-radius: 999px; background: rgba(0,0,0,.2); position: relative; }
+    .pv-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: left .15s; }
+    .pv-switch.on { background: var(--p); } .pv-switch.on::after { left: 18px; }
+    .pv-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--bd); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; }
+    .pv-check.on { background: var(--p); border-color: var(--p); }
+    .pv-radio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--bd); display: inline-block; }
+    .pv-radio.on { border: 5px solid var(--p); }
+    .pv-label { display: inline-flex; align-items: center; gap: 6px; }
+    .pv-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--bd); width: 240px; }
+    .pv-tabs span { padding: 6px 0; color: var(--t2); }
+    .pv-tabs span.on { color: var(--p); font-weight: 500; box-shadow: inset 0 -2px 0 var(--p); }
+    .pv-tag { height: 22px; padding: 0 8px; border-radius: 4px; display: inline-flex; align-items: center; font-size: 12px; background: rgba(0,0,0,.05); }
+    .pv-tag.primary { background: var(--p-soft); color: var(--p); }
+    .pv-tag.success { background: rgba(22,163,74,.1); color: var(--ok); }
+    .pv-tag.warning { background: rgba(245,158,11,.12); color: #B45309; }
+    .pv-tag.error { background: rgba(232,64,38,.1); color: var(--err); }
+    .pv-alert { width: 260px; padding: 8px 12px; border-radius: var(--r-a); background: var(--p-soft); display: flex; gap: 8px; align-items: center; font-size: 12px; }
+    .pv-alert i { width: 14px; height: 14px; border-radius: 50%; background: var(--p); flex-shrink: 0; }
+    .pv-alert.success { background: rgba(22,163,74,.1); } .pv-alert.success i { background: var(--ok); }
+    .pv-alert.warning { background: rgba(245,158,11,.12); } .pv-alert.warning i { background: var(--warn); }
+    .pv-alert.error { background: rgba(232,64,38,.1); } .pv-alert.error i { background: var(--err); }
+    .pv-badge { position: relative; width: 36px; height: 36px; border-radius: 8px; background: rgba(0,0,0,.06); }
+    .pv-badge b { position: absolute; top: -6px; right: -8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--err); color: #fff; font-size: 11px; font-weight: 500; display: flex; align-items: center; justify-content: center; }
+    .pv-pager { display: flex; gap: 6px; }
+    .pv-pager span { min-width: 28px; height: 28px; border-radius: var(--r-a); border: 1px solid var(--bd); display: flex; align-items: center; justify-content: center; font-size: 12px; }
+    .pv-pager span.on { background: var(--p); border-color: var(--p); color: var(--on-p); }
+    .pv-card { width: 220px; border-radius: var(--r-c); background: #fff; box-shadow: var(--sh); padding: 12px 14px; text-align: left; }
+    .pv-card b { font-weight: 500; display: block; } .pv-card span { color: var(--t2); font-size: 12px; }
+    .pv-crumb { color: var(--t2); } .pv-crumb b { color: var(--t1); font-weight: 400; }
+    .pv-link { color: var(--p); }
+    .pv-generic { color: var(--t2); display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; }
+    .pv-generic .ic { width: 28px; height: 28px; color: var(--p); }
+    .pv.live [data-tg] { cursor: pointer; transition: filter .12s, transform .12s, box-shadow .12s; }
+    .pv.live .pv-btn:hover, .pv.live .pv-tag:hover, .pv.live .pv-switch:hover, .pv.live .pv-check:hover { filter: brightness(.93); }
+    .pv.live .pv-btn:active { filter: brightness(.85); transform: scale(.97); }
+    .pv.live .pv-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--p-soft); }
+    .pv.live .pv-btn.clicked { box-shadow: 0 0 0 4px var(--p-soft); }
+    .pv.live .pv-tabs span:hover, .pv.live .pv-pager span:hover { color: var(--p); }
+    .pv.live .pv-radio-it:hover .pv-radio, .pv.live .pv-check:hover { border-color: var(--p); }
+    .pv-radio-grp { display: flex; gap: 16px; }
+    .pv-radio-it.on .pv-radio { border: 5px solid var(--p); }
+    .pv-tabs span { cursor: pointer; }
+
+    /* ---------- 资产 ---------- */
+    .as-cat { margin-top: 20px; border: 1px solid var(--border-1); border-radius: 12px; overflow: hidden; }
+    .as-cat:first-of-type { margin-top: 0; }
+    .as-cat-h { display: flex; align-items: center; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border-1); }
+    .as-cat-h b { font-size: 15px; font-weight: 500; color: var(--text-primary); }
+    .as-cat-h small { color: var(--text-3); font-size: 12px; }
+    .as-subs { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--border-1); }
+    .as-subs button { height: 26px; padding: 0 10px; border-radius: 999px; background: var(--fill-1); font-size: 12px; color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; }
+    .as-subs button em { font-style: normal; color: var(--text-3); }
+    .as-subs button.on { background: var(--brand-08); color: var(--brand); }
+    .as-subs button.on em { color: var(--brand); opacity: .7; }
+    .as-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 120px minmax(0, 1fr); border-top: 1px solid var(--border-1); align-items: center; }
+    .as-row:first-child { border-top: 0; }
+    .as-row > div { padding: 10px 20px; min-width: 0; }
+    .as-row > div + div { border-left: 1px solid var(--border-1); align-self: stretch; display: flex; align-items: center; }
+    .as-th > div { padding: 10px 20px; font-size: 12px; color: var(--text-3); background: var(--fill-3); }
+    .as-row:not(.as-th):hover { background: var(--fill-3); }
+    .as-nm { font-family: "SF Mono", Menlo, monospace; font-size: 13px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .as-pv { width: 52px; height: 52px; border-radius: 10px; border: 1px solid var(--border-1); background: #fff; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+    .as-pv img { max-width: 36px; max-height: 36px; object-fit: contain; }
+    .as-ty { font-size: 13px; color: var(--text-3); justify-content: space-between; gap: 8px; }
+    .as-ops { display: none; gap: 6px; }
+    .as-row:hover .as-ops { display: inline-flex; }
+    .as-ops .btn { height: 26px; padding: 0 10px; font-size: 12px; }
+    .as-ops .btn .ic { width: 14px; height: 14px; }
+    .as-empty { padding: 28px 20px; text-align: center; color: var(--text-3); font-size: 13px; }
+    .as-cat .as-more { margin: 0; padding: 12px; border-top: 1px solid var(--border-1); }
+    .as-file { background: var(--fill-3); }
+    .as-file-ic { position: relative; width: 26px; height: 32px; border-radius: 4px; background: #fff; border: 1.5px solid var(--fc); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; }
+    .as-file-ic::before { content: ""; position: absolute; top: -1.5px; right: -1.5px; width: 9px; height: 9px; background: var(--fill-3); border-left: 1.5px solid var(--fc); border-bottom: 1.5px solid var(--fc); border-bottom-left-radius: 2px; }
+    .as-file-ic b { font-size: 7px; font-weight: 700; color: #fff; background: var(--fc); border-radius: 2px; padding: 0 2px; line-height: 10px; letter-spacing: .2px; }
+    .as-more { margin-top: 16px; text-align: center; }
+
+    /* 搜索（demo .dl-search 同款） */
+    .ds-page-search { height: 32px; width: 220px; border-radius: 999px; background: rgba(0,0,0,0.05); display: flex; align-items: center; gap: 6px; padding: 0 12px; color: rgba(0,0,0,0.6); cursor: text; }
+    .ds-page-search .ic { width: 16px; height: 16px; color: rgba(0,0,0,0.6); flex-shrink: 0; display: inline-flex; }
+    .ds-page-search .ic svg { width: 16px; height: 16px; }
+    .ds-page-search input { flex: 1; min-width: 0; font-size: 14px; border: none; outline: none; background: transparent; color: inherit; font-family: inherit; padding: 0; }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="loading">正在加载设计系统数据…</div>
+  </div>
+  <script src="icons.js"></script>
+  <script>
+    /* ================= 基础工具 ================= */
+    const $ = (sel, root) => (root || document).querySelector(sel);
+    const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+    const icon = (n, cls) => { const s = (window.ICONS || {})[n]; return s ? '<span class="ic' + (cls ? " " + cls : "") + '">' + s + '</span>' : ""; };
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function toast(msg) {
+      let wrap = $(".toast-wrap");
+      if (!wrap) { wrap = document.createElement("div"); wrap.className = "toast-wrap"; document.body.appendChild(wrap); }
+      const t = document.createElement("div");
+      t.className = "toast";
+      t.textContent = msg;
+      wrap.appendChild(t);
+      setTimeout(() => { t.style.transition = "opacity .2s"; t.style.opacity = "0"; setTimeout(() => t.remove(), 220); }, 2000);
+    }
+
+    function copy(text, label) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => toast("已复制 " + (label || text)), () => toast("已复制 " + (label || text)));
+      } else {
+        const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        ta.remove(); toast("已复制 " + (label || text));
+      }
+    }
+
+    function isLight(v) {
+      let r, g, b, a = 1;
+      if (/^#/.test(v)) {
+        const h = v.length === 4 ? v.replace(/#(.)(.)(.)/, "#$1$1$2$2$3$3") : v;
+        r = parseInt(h.slice(1, 3), 16); g = parseInt(h.slice(3, 5), 16); b = parseInt(h.slice(5, 7), 16);
+        if (h.length === 9) a = parseInt(h.slice(7, 9), 16) / 255;
+      } else {
+        const m = v.match(/[\d.]+/g) || [255, 255, 255];
+        r = Number(m[0]); g = Number(m[1]); b = Number(m[2]); a = m[3] != null ? Number(m[3]) : 1;
+      }
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) * a + 255 * (1 - a);
+      return lum > 170;
+    }
+
+    function fmt(v) {
+      const m = v.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);
+      if (!m) return v.toUpperCase();
+      const h = "#" + [m[1], m[2], m[3]].map(x => Number(x).toString(16).padStart(2, "0")).join("").toUpperCase();
+      return m[4] != null && Number(m[4]) < 1 ? h + " · " + Math.round(Number(m[4]) * 100) + "%" : h;
+    }
+
+    function bindCopy(box) {
+      if (box.dataset.copyBound) return;
+      box.dataset.copyBound = "1";
+      box.addEventListener("click", e => { const t = e.target.closest("[data-copy]"); if (t) copy(t.dataset.copy, (t.dataset.label || "") + " " + t.dataset.copy); });
+    }
+
+    /* ================= 主题推导（demo theme.js 移植） ================= */
+    function colorMap(ds) {
+      const map = {};
+      const c = ds.color;
+      if (!c) return map;
+      (c.groups || []).forEach(g => g.tokens.forEach(t => { map[t.name.toLowerCase()] = t.value; map[(t.token || "").toLowerCase()] = t.value; }));
+      (c.palettes || []).forEach(p => p.steps.forEach(s => { map[s.name.toLowerCase()] = s.value; }));
+      return map;
+    }
+    const pick = (map, keys, fallback) => { for (const k of keys) if (map[k]) return map[k]; return fallback; };
+    const tok = (list, keys, fallback) => {
+      if (!list) return fallback;
+      for (const k of keys) { const t = list.find(x => x.name === k); if (t != null) return t.value; }
+      return fallback;
+    };
+    function hexA(h, a) {
+      if (!/^#[0-9a-f]{6}$/i.test(h)) return h;
+      const n = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+      return "rgba(" + n[0] + ", " + n[1] + ", " + n[2] + ", " + a + ")";
+    }
+    function deriveTheme(ds) {
+      if (!ds) ds = {};
+      const m = colorMap(ds);
+      const th = ds.theme || {};
+      const primary = pick(m, ["primary", "brand", "accent", "--harmony-brand"], th.primary || "#0A59F7");
+      const radiusTokens = ds.radius && ds.radius.tokens;
+      const scenes = ds.radius && ds.radius.scenes ? ds.radius.scenes.flatMap(s => s.tokens) : [];
+      const rAction = th.radius != null ? Math.min(th.radius, 20) : tok(scenes, ["radius-button-base"], tok(radiusTokens, ["rounded-action", "radius-md", "rounded-md"], 8));
+      const rContainer = th.radius != null ? th.radius : tok(scenes, ["radius-card-base", "radius-popup-base"], tok(radiusTokens, ["rounded-container", "radius-lg", "rounded-xl"], 12));
+      const shadowTokens = ds.shadow && ds.shadow.tokens;
+      const fam = (ds.typography && ds.typography.families && ds.typography.families[0]) || th.font || "HarmonyOS Sans SC";
+      return {
+        primary: primary,
+        onPrimary: pick(m, ["on-primary", "font-on-primary"], "#FFFFFF"),
+        primarySoft: pick(m, ["primary-container", "comp-emphasize-secondary", "x-legacy-brand-008"], hexA(primary, 0.1)),
+        page: pick(m, ["surface", "background-secondary", "surface-container-lowest"], "#F1F3F5"),
+        card: pick(m, ["surface-container-highest", "surface-bright", "background-primary", "surface"], "#FFFFFF"),
+        text1: pick(m, ["on-surface", "font-primary", "text", "foreground"], "#191919"),
+        text2: pick(m, ["on-surface-variant", "font-secondary"], "rgba(0,0,0,0.6)"),
+        border: pick(m, ["border-base", "comp-divider", "divider"], "rgba(0,0,0,0.1)"),
+        success: pick(m, ["success", "confirm"], "#16A34A"),
+        warning: pick(m, ["warning", "alert"], "#F59E0B"),
+        danger: pick(m, ["error", "danger", "warning"], "#E84026"),
+        rAction: Math.min(Number(rAction) || 8, 999),
+        rContainer: Math.min(Number(rContainer) || 12, 32),
+        shadow: tok(shadowTokens, ["shadow-card", "shadow-sm", "defaultShadowS", "OUTER_DEFAULT_SM"], "0 1px 6px rgba(0,0,0,0.08)"),
+        font: '"' + fam + '", "HarmonyOS Sans SC", "PingFang SC", sans-serif'
+      };
+    }
+    function themeVars(t) {
+      return "--p:" + t.primary + ";--on-p:" + t.onPrimary + ";--p-soft:" + t.primarySoft + ";--page:" + t.page + ";--card:" + t.card + ";--t1:" + t.text1 + ";--t2:" + t.text2 + ";" +
+        "--bd:" + t.border + ";--ok:" + t.success + ";--warn:" + t.warning + ";--err:" + t.danger + ";--r-a:" + t.rAction + "px;--r-c:" + t.rContainer + "px;--sh:" + t.shadow + ";--ff:" + t.font + ";";
+    }
+
+    /* ================= 分区框架 ================= */
+    const SECTIONS = [
+      { key: "overview", label: "概览", icon: "sec-overview" },
+      { key: "color", label: "颜色", icon: "sec-color" },
+      { key: "typography", label: "字体", icon: "sec-type" },
+      { key: "spacing", label: "间距", icon: "sec-spacing" },
+      { key: "radius", label: "圆角", icon: "sec-radius" },
+      { key: "shadow", label: "阴影", icon: "sec-shadow" }
+    ];
+    const ui = { typeSample: "", spScene: 0, radScene: 0, assetSub: {}, assetShow: {}, assetQuery: "" };
+
+    function sectionShell(sec, title, desc, tools) {
+      return '<div class="sec-label">' + esc(SECTIONS.find(s => s.key === sec).label) + '</div>' +
+        '<div class="sec-head"><div><div class="sec-title">' + title + '</div>' + (desc ? '<div class="sec-desc">' + desc + '</div>' : "") + '</div>' + (tools ? '<div class="sec-tools">' + tools + '</div>' : "") + '</div>' +
+        '<div class="sec-divider"></div>';
+    }
+
+    function emptyState(ds, sec) {
+      const s = SECTIONS.find(x => x.key === sec);
+      return '<div class="sec-label">' + s.label + '</div><div class="sec-title">' + s.label + '</div>' +
+        '<div class="sec-empty"><span class="ei">' + icon(s.icon) + '</span>' +
+        '<b>暂未从规范 Skill 中提取到「' + s.label + '」</b>' +
+        '<span>来源：' + esc(ds.source && ds.source.skill || ds.name) + '。在规范中补充' + s.label + '定义后，可重新同步。</span></div>';
+    }
+
+    const rulesHtml = rules => rules && rules.length ? '<div class="rules"><h4>' + icon("info") + '使用规则</h4><ul>' + rules.map(r => '<li>' + esc(r).replace(/`([^`]+)`/g, "<code>$1</code>") + '</li>').join("") + '</ul></div>' : "";
+
+    function renderCard(ds, key, mapping) {
+      const box = document.getElementById("sec-" + key);
+      if (!box) return;
+      if (!ds[key]) { box.innerHTML = emptyState(ds, key); return; }
+      const R = { overview: rOverview, color: rColor, typography: rType, spacing: rSpacing, radius: rRadius, shadow: rShadow, components: rComponents, assets: rAssets, patterns: rPatterns }[key];
+      R(box, ds, mapping);
+    }
+
+    /* ---------- 概览 ---------- */
+    function rOverview(box, ds) {
+      const ov = ds.overview || {}, m = ds.meta || {}, s = ds.source || {};
+      box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
+        '<div class="overview-text">' + esc(ov.text || "") + '</div>' +
+        (ov.principles && ov.principles.length ? '<div class="sub-block"><div class="sub-title">设计原则' + (ov.principlesSource ? '<small>' + esc(ov.principlesSource) + '</small>' : "") + '</div>' +
+          ov.principles.map(p => '<div class="props">' + esc(p) + '</div>').join("") + '</div>' : "") +
+        '<div class="sub-block">' +
+        '<div class="props">来源 Skill：' + esc(s.skill || "—") + ' · 适配器：' + esc(s.adapter || "—") +
+        (m.source_files != null ? ' · 源文件：' + esc(String(m.source_files)) + ' 个' + (m.source_size ? '（' + esc(String(m.source_size)) + '）' : "") : "") +
+        (m.source_entry ? ' · 入口：' + esc(m.source_entry) : "") + '</div>' +
+        (m.note ? '<div class="props">' + esc(m.note) + '</div>' : "") +
+        '</div>';
+    }
+
+    /* ---------- 颜色 ---------- */
+    function rColor(box, ds) {
+      const c = ds.color;
+      const sw = (t) => {
+        const v = t.value;
+        const light = isLight(v);
+        const alpha = /rgba\(.*,\s*0?\.\d+\)$/.test(v) || /^#[0-9a-f]{8}$/i.test(v);
+        return '<div class="swatch" data-copy="' + esc(v) + '" data-label="' + esc(t.name) + '">' +
+          '<div class="chip-c ' + (light ? "light-c" : "") + (alpha ? " checker" : "") + '"' + (alpha ? "" : ' style="background:' + v + '"') + '>' +
+          (alpha ? '<span class="fill" style="background:' + v + '"></span>' : "") +
+          '<span style="color:' + (light ? "rgba(0,0,0,.7)" : "#fff") + '">' + esc(fmt(v)) + '</span>' +
+          '<span class="copy" style="color:' + (light ? "rgba(0,0,0,.6)" : "#fff") + '">' + ((window.ICONS || {}).copy || "") + '</span>' +
+          '</div>' +
+          '<div class="info"><div class="nm" title="' + esc(t.name) + '">' + esc(t.label || t.name) + '</div><div class="tk" title="' + esc(t.token || "") + '">' + esc(t.token || "") + '</div></div></div>';
+      };
+      box.innerHTML = sectionShell("color", c.title, esc(c.desc)) +
+        (c.palettes || []).map(p => '<div class="sub-block"><div class="sub-title">' + esc(p.title) + '</div>' +
+          '<div class="palette">' + p.steps.map(s => {
+            const l = isLight(s.value);
+            return '<div class="cell" style="background:' + s.value + ';color:' + (l ? "rgba(0,0,0,.75)" : "#fff") + '" data-copy="' + s.value + '" data-label="' + s.name + '" title="' + esc(s.token || "") + '"><span>' + esc(s.name) + '</span>' + (s.token ? '<span style="opacity:.7">' + esc(s.token) + '</span>' : "") + '<span>' + esc(s.value.toLowerCase()) + '</span></div>';
+          }).join("") + '</div></div>').join("") +
+        c.groups.map(g => '<div class="sub-block">' + ((c.palettes || []).length && c.groups.length === 1 ? "" : '<div class="sub-title">' + esc(g.title) + '<small>' + g.tokens.length + ' 个' + (g.desc ? ' · ' + esc(g.desc) : "") + '</small></div>') +
+          '<div class="swatches">' + g.tokens.map(t => sw(t)).join("") + '</div></div>').join("") +
+        rulesHtml(c.rules);
+      bindCopy(box);
+    }
+
+    /* ---------- 字体 ---------- */
+    function rType(box, ds) {
+      const t = ds.typography;
+      const sample = ui.typeSample || "Octo Design 让设计更一致 Aa 123";
+      const fam = t.families && t.families.length ? t.families : ["系统默认字体"];
+      box.innerHTML = sectionShell("typography", t.title, esc(t.desc), '<input class="sample-input" placeholder="输入示例文字预览" value="' + esc(ui.typeSample) + '" data-sample>') +
+        '<div class="sub-block"><div class="sub-title">字体家族</div><div class="fam-row">' + fam.map(f =>
+          '<div class="fam"><div class="aa" style="font-family:\'' + esc(f) + '\',var(--font)">Aa</div><div><div class="fn">' + esc(f) + '</div>' +
+          '<div class="fw">' + (t.weights && t.weights.length ? "字重 " + t.weights.join(" / ") : "字重见层级定义") + '</div></div></div>').join("") + '</div></div>' +
+        '<div class="sub-block"><div class="sub-title">字号层级<small>' + t.scale.length + ' 级 · 点击复制 CSS</small></div>' +
+          '<div class="type-table">' + t.scale.map(s => {
+            const css = (s.weight || 400) + " " + s.size + "px/" + s.lineHeight + "px " + (s.family ? '"' + s.family + '"' : "var(--font)");
+            return '<div class="type-row" data-copy="font: ' + esc(css) + ';" data-label="' + esc(s.name) + '">' +
+              '<div><div class="tn">' + esc(s.name) + '</div>' + (s.token && s.token !== s.name ? '<div class="tv">' + esc(s.token) + '</div>' : "") + (s.desc ? '<div class="tv" title="' + esc(s.desc) + '">' + esc(s.desc) + '</div>' : "") + '</div>' +
+              '<div class="tv">' + s.size + 'px / ' + s.lineHeight + 'px' + (s.weight ? " · " + s.weight : "") + '</div>' +
+              '<div class="sample" style="font-size:' + Math.min(s.size, 56) + 'px;line-height:' + Math.min(s.lineHeight, 66) + 'px;font-weight:' + (s.weight || 400) + ';font-family:' + (s.family ? "'" + esc(s.family) + "'," : "") + 'var(--font)" data-sample-text>' + esc(sample) + '</div>' +
+              icon("copy") + '</div>';
+          }).join("") + '</div></div>' + rulesHtml(t.rules);
+      bindCopy(box);
+      $("[data-sample]", box).addEventListener("input", e => { ui.typeSample = e.target.value; $$("[data-sample-text]", box).forEach(n => { n.textContent = e.target.value || "Octo Design 让设计更一致 Aa 123"; }); });
+    }
+
+    /* ---------- 间距 / 圆角：场景 tab ---------- */
+    function sceneTabs(scenes, cur, attr) {
+      if (!scenes || !scenes.length) return "";
+      const sceneName = k => ({ elements: "元素", components: "组件", layout: "布局", scene: "场景" }[k] || k);
+      return '<div class="seg-sm scene-tabs" ' + attr + '>' + ["基础"].concat(scenes.map(s => sceneName(s.title))).map((n, i) => '<button class="' + (i === cur ? "on" : "") + '" data-i="' + i + '">' + esc(n) + '</button>').join("") + '</div>';
+    }
+
+    function rSpacing(box, ds) {
+      const s = ds.spacing;
+      const list = ui.spScene && s.scenes ? s.scenes[ui.spScene - 1].tokens : s.tokens;
+      const max = Math.max(...list.map(t => Number(t.value) || 0), 1);
+      box.innerHTML = sectionShell("spacing", s.title, esc(s.desc)) +
+        '<div class="sub-block">' + sceneTabs(s.scenes, ui.spScene, "data-sc") +
+        '<div class="sp-list">' + list.map(t => '<div class="sp-row" data-copy="' + t.value + 'px" data-label="' + esc(t.name) + '">' +
+          '<span class="nm">' + esc(t.name) + '</span><span class="vl">' + t.value + 'px' + (t.raw && t.raw !== t.value + "px" ? " · " + esc(t.raw) : "") + '</span>' +
+          '<span class="bar"><i style="width:' + Math.max(4, (Number(t.value) / max) * 100) + '%;max-width:' + Math.max(4, Number(t.value) * 2) + 'px"></i></span>' +
+          '<span class="ds" title="' + esc(t.desc || "") + '">' + esc(t.ref ? "引用 " + t.ref : t.desc || "") + '</span></div>').join("") + '</div></div>' + rulesHtml(s.rules);
+      bindCopy(box);
+      const sc = $("[data-sc]", box);
+      if (sc) sc.onclick = e => { const b = e.target.closest("[data-i]"); if (b) { ui.spScene = Number(b.dataset.i); rSpacing(box, ds); } };
+    }
+
+    function rRadius(box, ds) {
+      const r = ds.radius;
+      const list = ui.radScene && r.scenes ? r.scenes[ui.radScene - 1].tokens : r.tokens;
+      box.innerHTML = sectionShell("radius", r.title, esc(r.desc)) +
+        '<div class="sub-block">' + sceneTabs(r.scenes, ui.radScene, "data-sc") +
+        '<div class="rad-grid">' + list.map(t => '<div class="rad" data-copy="' + t.value + 'px" data-label="' + esc(t.name) + '">' +
+          '<div class="demo" style="border-radius:' + Math.min(Number(t.value), 44) + 'px"></div>' +
+          '<div class="nm">' + esc(t.name) + '</div><div class="vl">' + (Number(t.value) >= 999 ? "完全圆角" : t.value + "px") + (t.desc ? " · " + esc(t.ref ? "引用 " + t.ref : t.desc) : "") + '</div></div>').join("") + '</div></div>' + rulesHtml(r.rules);
+      bindCopy(box);
+      const sc = $("[data-sc]", box);
+      if (sc) sc.onclick = e => { const b = e.target.closest("[data-i]"); if (b) { ui.radScene = Number(b.dataset.i); rRadius(box, ds); } };
+    }
+
+    /* ---------- 阴影 ---------- */
+    function rShadow(box, ds) {
+      const s = ds.shadow;
+      box.innerHTML = sectionShell("shadow", s.title, esc(s.desc)) +
+        '<div class="sp-list">' + s.tokens.map(t => '<div class="sp-row sh-row" data-copy="box-shadow: ' + esc(t.value) + ';" data-label="' + esc(t.name) + '">' +
+          '<span class="sh-demo"><i style="box-shadow:' + t.value + '"></i></span>' +
+          '<span class="nm">' + esc(t.name) + '</span>' +
+          '<span class="vl sh-val">' + esc(t.value) + '</span>' +
+          '<span class="ds" title="' + esc(t.desc || "") + '">' + esc(t.desc || "") + '</span></div>').join("") + '</div>' + rulesHtml(s.rules);
+      bindCopy(box);
+    }
+
+    /* ---------- 组件（三列表格 + 沙箱预览，demo ds.js 移植） ---------- */
+    const PROP_CN = { types: "变体", type: "变体", variant: "变体", state: "状态", status: "状态", size: "尺寸", color: "颜色", selected: "选中", checked: "选中", disabled: "禁用", loading: "加载", indeterminate: "半选", closable: "可关闭", dot: "圆点", count: "数量", showTotal: "显示总数", material: "材质" };
+    const LIVE = "__live";
+    const STATES = [[LIVE, "交互"], ["hover", "悬停"], ["pressed", "按下"], ["disabled", "禁用"]];
+    const FORCE = { enabled: "rest", normal: "rest", default: "rest", hover: "hover", pressed: "pressed", active: "pressed", focus: "focus", focused: "focus", disabled: "disabled", loading: "loading" };
+    const SRC_BADGE = { source: ["源码渲染", "ok", "规范内有组件源码"], ai: ["AI 生成", "ai", "无源码，按规范与 token 生成"], shot: ["验证截图", "shot", "仅有截图"], token: ["token 推导", "shot", "按 token 推导"], none: ["无法生成", "gray", "描述不足"] };
+    const STATUS = { aligned: ["已对齐", "ok"], partial: ["部分对齐", "warn"], missing: ["未关联", "miss"] };
+    const TOKEN_PREVIEW = ["button", "input", "search", "numeric", "form", "switch", "checkbox", "radio", "tabs", "tag", "alert", "badge", "pagination", "card", "dialog", "drawer", "breadcrumb", "link"];
+    const mapFor = (mapping, it) => (mapping || {})[it.id];
+
+    function variantAxes(it) {
+      if (it.variants) {
+        const im = it.interaction || {};
+        const base = (it.variants.find(v => /Enabled/.test(JSON.stringify(v.props))) || it.variants[0]).props;
+        const axes = it.props.filter(k => k !== "scenario" && k !== im.stateAxis && new Set(it.variants.map(v => v.props[k])).size > 1)
+          .map(k => ({ k: k, label: PROP_CN[k] || k, values: [...new Set(it.variants.map(v => v.props[k]))] }));
+        const ORDER = ["rest", "hover", "pressed", "focus", "disabled", "loading"];
+        const states = im.stateAxis ? [...new Set(it.variants.map(v => v.props[im.stateAxis]))].map(v => ({ label: v, force: FORCE[String(v).toLowerCase()] || String(v).toLowerCase() }))
+          .sort((a, b) => (ORDER.indexOf(a.force) + 1 || 99) - (ORDER.indexOf(b.force) + 1 || 99)) : [];
+        return { base: base, axes: axes, states: states, stateLabel: PROP_CN[im.stateAxis] || "状态" };
+      }
+      const base = defaultsFor(it);
+      const props = (it.props || []).filter(p => typeof p === "object" && /\|/.test(p.values));
+      const axes = props.map(p => ({ k: p.name, label: PROP_CN[p.name] || p.name, values: p.values.split("|").map(x => x.trim()) }));
+      const bools = (it.props || []).filter(p => typeof p === "object" && p.values === "boolean").map(p => p.name);
+      const states = [["rest", "默认"], ["hover", "悬停"], ["pressed", "按下"], ["focus", "聚焦"], ["disabled", "禁用"]].map(([f, l]) => ({ label: l, force: f }));
+      if (bools.includes("loading")) states.push({ label: "加载", force: "loading", attr: "loading" });
+      return { base: base, axes: axes, states: states, stateLabel: "状态" };
+    }
+
+    function defaultsFor(it) {
+      const out = {};
+      (it.props || []).forEach(p => { if (typeof p === "object") out[p.name] = p.values === "boolean" ? "false" : String(p.values).split("|")[0].trim(); });
+      if (it.props && it.props.some(p => p.name === "size" && /\bmd\b/.test(p.values))) out.size = "md";
+      if (it.id === "button") { out.types = "filled"; out.color = "primary"; }
+      return out;
+    }
+
+    const canRender = src => src.files.some(f => /^(html|tsx|jsx)$/.test(f.lang) && typeof f.code === "string");
+    function previewMode(it) {
+      const src = it.source || { status: "missing" };
+      if (src.status === "found" && canRender(src)) return "source";
+      if (src.status === "generated") return "ai";
+      if (it.variants) return "shot";
+      if (TOKEN_PREVIEW.includes(it.id)) return "token";
+      return "none";
+    }
+
+    function mobileScale(ds) {
+      const body = ((ds.typography || {}).scale || []).filter(x => /body/i.test(x.name)).map(x => x.size);
+      return body.length && Math.max(...body) >= 16 ? 0.75 : 1;
+    }
+
+    const CDN = {
+      react: "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
+      dom: "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js",
+      babel: "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"
+    };
+
+    function sandboxDoc(it, props, ds, i) {
+      const files = it.source.files;
+      const css = files.filter(f => /^(css|scss)$/.test(f.lang)).map(f => typeof f.code === "string" ? f.code : "").join("\n");
+      const vars = themeVars(deriveTheme(ds));
+      const head = '<meta charset="utf-8"><style>:root{' + vars + '}html,body{margin:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:24px;box-sizing:border-box;font-family:"HarmonyOS Sans SC","PingFang SC",sans-serif}.cp-err{color:#E84026;font:12px/18px monospace;white-space:pre-wrap}' + css + '</style>';
+      const fit = '<scr' + 'ipt>new ResizeObserver(()=>parent.postMessage({cpFrame:' + i + ',h:document.body.scrollHeight},"*")).observe(document.body);</scr' + 'ipt>';
+      const html = files.find(f => f.lang === "html");
+      if (html && it.source.status === "generated") {
+        const kit = '<style>body{display:block;min-height:0;padding:24px 28px}.g{display:flex;flex-direction:column;gap:20px}.g-sec{display:flex;flex-direction:column;gap:10px}.g-label{font-size:12px;color:#8a8a8a}.g-row{display:flex;flex-wrap:wrap;gap:16px 20px;align-items:flex-end}.g-it{display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:6px}.g-cap{font-size:11px;color:#9a9a9a;line-height:14px;white-space:nowrap}.g-label i{font-style:normal;color:#b5b5b5;margin-left:4px}.g-sec{max-width:100%}.g-sec .g-mx+.g-mx{margin-top:10px}.g-mx{display:grid;gap:14px 16px;align-items:center;justify-items:center;width:max-content}.g-mh{font-size:12px;color:#8a8a8a;white-space:nowrap}.g-rh{font-size:12px;color:#8a8a8a;justify-self:start;white-space:nowrap;padding-right:8px}.g-cell{display:flex;align-items:center;justify-content:center;min-height:44px;padding:4px}button{font-family:inherit}.g.own{min-height:200px;align-items:center;justify-content:center}body[data-force] .g{pointer-events:none}body[data-force=hover] .g :is(button,input,select,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.94)}body[data-force=pressed] .g :is(button,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.86)}body[data-force=disabled] .g{opacity:.4}body[data-force=focus] .g :is(button,input){box-shadow:0 0 0 2px #fff,0 0 0 4px var(--p)}</style>';
+        const js = '<scr' + 'ipt>document.addEventListener("click",function(e){var t=e.target.closest("[data-toggle]");if(t&&!t.disabled){t.classList.toggle("on");return}var it=e.target.closest("[data-item]");if(it&&!it.disabled){var g=it.closest("[data-group]");g&&g.querySelectorAll("[data-item]").forEach(function(x){x.classList.toggle("on",x===it)})}});</scr' + 'ipt>';
+        return '<!doctype html><html><head>' + head + kit + '</head><body>' + html.code + js + fit + '</body></html>';
+      }
+      if (html) return '<!doctype html><html><head>' + head + '</head><body>' + html.code + fit + '</body></html>';
+
+      const jsx = files.filter(f => /^(tsx|jsx)$/.test(f.lang));
+      const norm = it.id.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const main = jsx.find(f => f.path.toLowerCase().replace(/[^a-z0-9/]/g, "").split("/").pop().startsWith(norm)) || jsx[0];
+      let mainName = null;
+      const code = jsx.map(f => {
+        let c = f.code.replace(/^\s*import[^;]*?from\s*['"][^'"]+['"];?\s*$/gm, "").replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, "");
+        const m = c.match(/export\s+default\s+(?:function|class)\s+(\w+)/) || c.match(/export\s+default\s+(\w+)\s*;?/);
+        if (f === main && m) mainName = m[1];
+        return c.replace(/export\s+default\s+(function|class)\s+/g, "$1 ").replace(/export\s+default\s+\w+\s*;?/g, "")
+          .replace(/export\s+(const|let|function|class|interface|type|enum)\s/g, "$1 ").replace(/export\s*\{[^}]*\}\s*;?/g, "");
+      }).join("\n");
+      const p = {};
+      Object.entries(props || {}).forEach(([k, v]) => { if (!k.startsWith("__") && k !== "scenario") p[k] = v === "true" ? true : v === "false" ? false : v; });
+      return `<!doctype html><html><head>${head}
+        <script src="${CDN.react}"><\/script><script src="${CDN.dom}"><\/script><script src="${CDN.babel}"><\/script></head>
+        <body><div id="root"></div>${fit}
+        <script>
+          try {
+            const { useState, useEffect, useRef, useMemo, useCallback, forwardRef, Fragment } = React;
+            const src = ${JSON.stringify(code)} + "\\n;window.__C = typeof ${mainName || "undefined"} !== 'undefined' ? ${mainName || "undefined"} : null;";
+            const out = Babel.transform(src, { filename: "c.tsx", presets: [["typescript", { isTSX: true, allExtensions: true }], "react"] }).code;
+            new Function("React", "useState", "useEffect", "useRef", "useMemo", "useCallback", "forwardRef", "Fragment", out)(React, useState, useEffect, useRef, useMemo, useCallback, forwardRef, Fragment);
+            if (!window.__C) throw new Error("未找到默认导出的组件");
+            ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(window.__C, Object.assign({ children: ${JSON.stringify(it.name.split(" ")[1] || it.name)} }, ${JSON.stringify(p)})));
+          } catch (e) { document.body.innerHTML = '<div class="cp-err">组件源码渲染失败：' + e.message + '</div>'; }
+        <\/script></body></html>`;
+    }
+
+    /* 把属性驱动的单个实例按「每个属性一行」复制成全部变体（ai 模式） */
+    function expandVariants(doc, it, ax, scale) {
+      scale = scale || 1;
+      const wrap = doc.querySelector(".g.own"), tpl = wrap && wrap.querySelector("[data-c]");
+      if (!tpl) return;
+      const sk = (it.interaction || {}).stateAxis;
+      const set = (el, props) => Object.entries(props).forEach(([k, v]) => {
+        if (k.startsWith("__") || k === "scenario" || k === sk) return;
+        el.setAttribute("data-" + k.toLowerCase(), String(v).toLowerCase());
+      });
+      const item = (props, cap, force, attr) => {
+        const el = tpl.cloneNode(true); set(el, props);
+        if (scale !== 1) el.style.zoom = scale;
+        if (force && force !== "rest") el.setAttribute("data-force", force);
+        if (attr) el.setAttribute("data-" + attr, "true");
+        const f = doc.createElement("div"); f.className = "g-it";
+        f.appendChild(el);
+        const c = doc.createElement("span"); c.className = "g-cap"; c.textContent = cap; f.appendChild(c);
+        return f;
+      };
+      const sec = (label, els) => { const s = doc.createElement("div"); s.className = "g-sec"; s.innerHTML = '<div class="g-label">' + label + '</div><div class="g-row"></div>'; els.forEach(e => s.lastChild.appendChild(e)); return s; };
+      wrap.innerHTML = "";
+      wrap.classList.remove("own");
+      const tg = (it.interaction || {}).toggleAxis, tAxis = tg && ax.axes.find(x => x.k === tg);
+      ax.axes.filter(a => !(ax.states.length && a === tAxis)).forEach(a => wrap.appendChild(sec(esc(a.label) + " <i>" + esc(a.k) + "</i>", a.values.map(v => item(Object.assign({}, ax.base, { [a.k]: v }), v)))));
+      if (ax.states.length) {
+        const rows = tAxis ? tAxis.values.map(v => ({ label: esc(tAxis.label) + " " + esc(v), p: Object.assign({}, ax.base, { [tg]: v }) })) : [{ label: "", p: ax.base }];
+        const cell = (p, x) => {
+          const c = doc.createElement("div"); c.className = "g-cell";
+          const el = tpl.cloneNode(true); set(el, p);
+          if (scale !== 1) el.style.zoom = scale;
+          if (x.force && x.force !== "rest") el.setAttribute("data-force", x.force);
+          if (x.attr) el.setAttribute("data-" + x.attr, "true");
+          c.appendChild(el); return c;
+        };
+        const head = (cls, html) => { const h = doc.createElement("span"); h.className = cls; h.innerHTML = html; return h; };
+        const matrix = states => {
+          const mx = doc.createElement("div"); mx.className = "g-mx";
+          mx.style.gridTemplateColumns = (tAxis ? "auto " : "") + "repeat(" + states.length + ", max-content)";
+          if (tAxis) mx.appendChild(head("", ""));
+          states.forEach(x => mx.appendChild(head("g-mh", esc(x.label))));
+          rows.forEach(r => { if (tAxis) mx.appendChild(head("g-rh", r.label)); states.forEach(x => mx.appendChild(cell(r.p, x))); });
+          return mx;
+        };
+        const s2 = doc.createElement("div"); s2.className = "g-sec";
+        s2.innerHTML = '<div class="g-label">' + esc(ax.stateLabel) + " <i>" + esc(sk || "state") + "</i>" + '</div>';
+        wrap.appendChild(s2);
+        const fits = () => [...s2.querySelectorAll(".g-mx")].every(m => m.scrollWidth <= wrap.clientWidth + 2);
+        for (let per = ax.states.length; per >= 1; per--) {
+          s2.querySelectorAll(".g-mx").forEach(m => m.remove());
+          for (let k = 0; k < ax.states.length; k += per) s2.appendChild(matrix(ax.states.slice(k, k + per)));
+          if (fits()) break;
+        }
+      }
+    }
+
+    /* token 推导预览：点击可交互 */
+    function previewClick(t) {
+      const g = t.dataset.tg;
+      if (g === "toggle") t.classList.toggle("on");
+      else if (g === "radio" || g === "tab" || g === "page") {
+        const wrap = t.parentElement;
+        $$('[data-tg="' + g + '"]', wrap).forEach(x => x.classList.toggle("on", x === t));
+      } else if (g === "check") { t.classList.toggle("on"); t.textContent = t.classList.contains("on") ? "✓" : ""; }
+      else if (g === "btn") { t.classList.add("clicked"); setTimeout(() => t.classList.remove("clicked"), 300); }
+    }
+    function pvPreview(id, s) {
+      s = s || {};
+      const on = v => v === "true";
+      switch (id) {
+        case "button": {
+          const size = s.size || "md", col = s.color || "primary", dis = on(s.disabled) ? "disabled" : "";
+          const types = s.types ? [s.types] : ["filled", "outlined", "text"];
+          return types.map(t => t === "icon" ? '<button class="pv-btn ' + col + ' outlined ' + size + '" ' + dis + ' data-tg="btn" style="width:32px;padding:0;justify-content:center">＋</button>'
+            : '<button class="pv-btn ' + col + " " + (t === "link" ? "text" : t) + " " + size + '" ' + dis + ' data-tg="btn">' + (on(s.loading) ? "⟳ " : "") + (t === "filled" ? "新建任务" : t === "outlined" ? "取消" : "查看详情") + '</button>').join("");
+        }
+        case "input": case "search": case "numeric": case "form":
+          return '<div class="pv-input ' + (s.status === "error" ? "err" : "") + '">' + (id === "search" ? "🔍 搜索设备" : id === "numeric" ? "－　 12 　＋" : "请输入名称") + '</div><div class="pv-input focus">聚焦态</div>';
+        case "switch": return '<span class="pv-switch ' + (s.checked === "false" ? "" : "on") + '" data-tg="toggle"></span><span class="pv-switch" data-tg="toggle"></span>';
+        case "checkbox": return '<span class="pv-label"><span class="pv-check on" data-tg="check">✓</span>选项一</span><span class="pv-label"><span class="pv-check" data-tg="check"></span>选项二</span>';
+        case "radio": return '<span class="pv-radio-grp"><span class="pv-label pv-radio-it on" data-tg="radio"><span class="pv-radio"></span>选项一</span><span class="pv-label pv-radio-it" data-tg="radio"><span class="pv-radio"></span>选项二</span></span>';
+        case "tabs": return '<div class="pv-tabs"><span class="on" data-tg="tab">概览</span><span data-tg="tab">告警</span><span data-tg="tab">日志</span></div>';
+        case "tag": return (s.color && s.color !== "default" ? [s.color] : ["primary", "success", "warning", "error"]).map(c => '<span class="pv-tag ' + c + '">' + ({ primary: "进行中", success: "已完成", warning: "待处理", error: "异常" }[c] || "标签") + '</span>').join("");
+        case "alert": return '<div class="pv-alert ' + (s.type || "info") + '"><i></i>' + ({ success: "保存成功", warning: "存在潜在风险", error: "操作失败，请重试" }[s.type] || "系统将于今晚 22:00 升级") + '</div>';
+        case "badge": return '<span class="pv-badge"><b>8</b></span><span class="pv-badge"><b>99+</b></span>';
+        case "pagination": return '<div class="pv-pager"><span>‹</span><span class="on" data-tg="page">1</span><span data-tg="page">2</span><span data-tg="page">3</span><span>›</span></div>';
+        case "card": case "dialog": case "drawer": return '<div class="pv-card"><b>' + (id === "card" ? "设备总数" : "确认删除？") + '</b><span>' + (id === "card" ? "1,286 台 · 较昨日 +12" : "删除后不可恢复") + '</span>' + (id !== "card" ? '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="pv-btn default outlined sm">取消</button><button class="pv-btn primary filled sm">确定</button></div>' : "") + '</div>';
+        case "breadcrumb": return '<span class="pv-crumb">首页 / 设备管理 / <b>设备详情</b></span>';
+        case "link": return '<span class="pv-link">查看详情</span><span class="pv-link" style="opacity:.4">禁用链接</span>';
+        default: return '<div class="pv-generic">' + icon("cube") + '<span>' + esc(id) + '</span></div>';
+      }
+    }
+
+    const dsDataDir = ds => "systems/" + ds.id;
+
+    function paintRow(box, ds, mapping, i) {
+      const it = ds.components.items[i], row = document.getElementById("cmp-" + i);
+      if (!row) return;
+      const mode = previewMode(it), bt = SRC_BADGE[mode][0], bc = SRC_BADGE[mode][1];
+      const ax = variantAxes(it);
+      const propNames = it.variants ? ax.axes.map(a => a.k).concat((it.interaction || {}).stateAxis ? [(it.interaction || {}).stateAxis] : []) : (it.props || []).filter(p => typeof p === "object").map(p => p.name);
+      let previewHtml;
+      if (mode === "ai" || mode === "source") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
+      else if (mode === "shot") previewHtml = '<div class="ct-shots">' + it.variants.slice(0, 8).map(v => '<img src="' + dsDataDir(ds) + "/" + v.image + '" alt="" title="' + esc(Object.values(v.props).join(" · ")) + '">').join("") + '</div>';
+      else if (mode === "token") previewHtml = '<div class="pv live">' + pvPreview(it.id, defaultsFor(it)) + '</div>';
+      else {
+        const paths = ((it.source || {}).files || []).map(f => esc(f.path) + (f.code && f.code.$file ? ' <span style="opacity:.6">→ ' + esc(f.code.$file) + '</span>' : "")).join("<br>");
+        previewHtml = '<div class="ct-empty">源码文件未随包提供，暂无预览' + (paths ? '<br><span style="opacity:.7">' + paths + '</span>' : "") + '</div>';
+      }
+
+      const m = mapFor(mapping, it);
+      const mapHtml = m ?
+        '<div class="ct-map">' +
+        '<div class="ct-map-h"><b>' + esc(m.pixso.component) + '</b>' + (function () { const st = STATUS[m.pixso.status] || STATUS.missing; return '<span class="map-st ' + st[1] + '">' + st[0] + '</span>'; })() + '</div>' +
+        '<div class="ct-map-kv"><span>组件库</span>' + esc(m.pixso.library) + '</div>' +
+        (m.pixso.logicalName ? '<div class="ct-map-kv"><span>逻辑名</span>' + esc(m.pixso.logicalName) + '</div>' : "") +
+        (m.pixso.verification ? '<div class="ct-map-kv"><span>关联状态</span>' + esc(m.pixso.verification) + '</div>' : "") +
+        '<div class="ct-map-kv"><span>变体属性</span><div class="map-props">' + (Object.keys(m.pixso.props || {}).length ? Object.entries(m.pixso.props).map(([k, d]) => '<span class="map-prop" title="' + esc(Object.entries(d.values).map(([a, b]) => a + " → " + b).join("\n")) + '">' + esc(PROP_CN[k] || k) + " → " + esc(d.label) + '</span>').join("") : "—") + '</div></div>' +
+        '<div class="ct-map-kv"><span>变体数</span>' + (m.pixso.variants != null ? m.pixso.variants : Object.values(m.pixso.props || {}).reduce((a, d) => a * Object.keys(d.values).length, 1)) + ' 个</div>' +
+        '<div class="ct-map-kv"><span>绑定变量</span>' + (m.tokens || m.rows || []).length + ' 个</div>' +
+        (m.pixso.nodeId ? '<div class="ct-map-kv"><span>nodeId</span>' + esc(m.pixso.nodeId) + '</div>' : "") +
+        (m.pixso.propsNote ? '<div class="ct-map-kv"><span>备注</span>' + esc(m.pixso.propsNote) + '</div>' : "") +
+        (m.sample ? '<span class="tag gray ct-sample">示意数据</span>' : "") +
+        '<button class="btn btn-ghost map-btn" data-map-act="open">在 Pixso 中打开 ↗</button>' +
+        '</div>'
+        : '<div class="ct-map none"><div class="ct-map-h"><b>未关联 Pixso 组件</b></div><div class="ct-map-note">关联后可在生成设计稿时使用对应组件实例</div><button class="btn btn-ghost map-btn" data-map-act="link">关联组件</button></div>';
+
+      row.innerHTML =
+        '<div class="ct-name">' +
+        '<div class="nm">' + esc(it.name) + '</div>' +
+        (it.desc ? '<div class="props">' + esc(it.desc) + '</div>' : "") +
+        (propNames.length ? '<div class="props">' + propNames.map(esc).join(" · ") + '</div>' : "") +
+        (it.category ? '<div class="props">' + esc(it.category) + (it.categoryId ? ' · ' + esc(it.categoryId) : "") + (it.order != null ? ' · order ' + esc(String(it.order)) : "") + '</div>' : "") +
+        (it.states && it.states.length ? '<div class="props">状态：' + it.states.map(esc).join(" / ") + (it.missingStates && it.missingStates.length ? '（缺失：' + it.missingStates.map(esc).join(" / ") + '）' : "") + '</div>' : "") +
+        (it.tokenRoles && it.tokenRoles.length ? '<div class="props" title="' + esc(it.tokenRoles.join("\n")) + '">token：' + it.tokenRoles.map(esc).join(" · ") + '</div>' : "") +
+        ((it.rules || []).length ? it.rules.map(r => '<div class="props">' + esc(r) + '</div>').join("") : "") +
+        '<span class="src-badge ' + bc + '" title="' + esc(SRC_BADGE[mode][2]) + '">' + bt + '</span>' +
+        '</div>' +
+        '<div class="ct-preview">' + previewHtml + '</div>' +
+        '<div class="ct-mapcol">' + mapHtml + '</div>';
+
+      if (mode === "ai" || mode === "source") {
+        const f = $(".cp-frame", row);
+        f.onload = () => {
+          try {
+            const doc = f.contentDocument, b = doc.body;
+            if (mode === "ai") expandVariants(doc, it, ax, mobileScale(ds));
+            const fit = () => { f.style.height = Math.min(b.scrollHeight, 1200) + "px"; };
+            fit(); new ResizeObserver(fit).observe(b);
+            if ((it.interaction || {}).toggleAxis) doc.addEventListener("click", e => {
+              const el = e.target.closest("[data-c]"); if (!el || el.hasAttribute("data-force")) return;
+              const a = it.interaction.toggleAxis.toLowerCase(), vals = [...new Set(it.variants.map(v => String(v.props[it.interaction.toggleAxis]).toLowerCase()))];
+              el.setAttribute("data-" + a, vals[(vals.indexOf(el.getAttribute("data-" + a)) + 1) % vals.length]);
+            });
+          } catch (e) { /* 保持默认高度 */ }
+        };
+        f.srcdoc = sandboxDoc(it, Object.assign({}, ax.base), ds, i);
+      } else if (mode === "token") {
+        row.querySelector(".pv").addEventListener("click", e => { const t = e.target.closest("[data-tg]"); if (t) previewClick(t); });
+      }
+    }
+
+    function rComponents(box, ds, mapping) {
+      const c = ds.components;
+      box.innerHTML = sectionShell("components", c.title, esc(c.desc)) +
+        '<div class="ct-table">' +
+        '<div class="ct-row ct-th"><div>名称</div><div>预览</div><div>映射的设计组件</div></div>' +
+        c.items.map((it, i) => '<div class="ct-row cp-block" id="cmp-' + i + '" data-cmp-block="' + i + '"></div>').join("") +
+        '</div>';
+      c.items.forEach((it, i) => paintRow(box, ds, mapping, i));
+      box.onclick = e => {
+        const b = e.target.closest("[data-map-act]");
+        if (!b) return;
+        const it = c.items[Number(b.closest("[data-cmp-block]").dataset.cmpBlock)];
+        const mm = mapFor(mapping, it);
+        if (b.dataset.mapAct === "open" && mm && mm.pixso && mm.pixso.url) { window.open(mm.pixso.url, "_blank"); return; }
+        toast(b.dataset.mapAct === "link" ? "为「" + it.name + "」关联 Pixso 组件（Demo 模拟）" : "将在 Pixso 中打开「" + (mm && mm.pixso ? mm.pixso.component : it.name) + "」（Demo 模拟）");
+      };
+    }
+
+    /* ---------- 资产（demo rAssets 移植，成员视角） ---------- */
+    const fmtBytes = n => n == null ? "" : n < 1024 ? n + " B" : n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB";
+    const PAGE = 20;
+    const assetSrc = (dir, x) => /^(data:|blob:|https?:)/.test(x.src) ? x.src : dir + "/" + x.src;
+    const IMG_EXT = ["SVG", "PNG", "JPG", "JPEG", "GIF", "WEBP"];
+    const FILE_KIND = { MD: ["文档", "#5B6B7F"], MARKDOWN: ["文档", "#5B6B7F"], TXT: ["文本", "#5B6B7F"], HTML: ["网页", "#E8590C"], HTM: ["网页", "#E8590C"],
+      XLSX: ["表格", "#16A34A"], XLS: ["表格", "#16A34A"], CSV: ["表格", "#16A34A"], JSON: ["数据", "#7C3AED"], PDF: ["PDF", "#DC2626"],
+      DOC: ["文档", "#2563DB"], DOCX: ["文档", "#2563DB"], PPT: ["演示", "#EA580C"], PPTX: ["演示", "#EA580C"], ZIP: ["压缩包", "#A16207"],
+      TTF: ["字体", "#0F766E"], OTF: ["字体", "#0F766E"], WOFF: ["字体", "#0F766E"], WOFF2: ["字体", "#0F766E"] };
+    function assetPreview(dir, x) {
+      const t = String(x.type || "").toUpperCase();
+      if (IMG_EXT.includes(t)) return '<span class="as-pv"><img src="' + assetSrc(dir, x) + '" loading="lazy" alt=""></span>';
+      const kind = FILE_KIND[t] || ["文件", "#777777"];
+      return '<span class="as-pv as-file" title="' + kind[0] + '"><span class="as-file-ic" style="--fc:' + kind[1] + '"><b>' + esc(t.slice(0, 4) || "FILE") + '</b></span></span>';
+    }
+    function assetCats(a) {
+      if (!a.categories) a.categories = [{ title: a.title || "图标", subs: (a.groups || []).map(g => ({ title: g.title, items: g.items })) }];
+      return a.categories;
+    }
+
+    function rAssets(box, ds) {
+      const a = ds.assets, cats = assetCats(a), dir = dsDataDir(ds);
+      const total = cats.reduce((n, c) => n + c.subs.reduce((m, s) => m + s.items.length, 0), 0);
+      box.innerHTML = sectionShell("assets", "资产", (a.desc ? esc(a.desc) + " · " : "") + cats.length + " 个分类 · " + total + " 个资产",
+        '<label class="ds-page-search">' + icon("search") + '<input placeholder="搜索资产名称" value="' + esc(ui.assetQuery) + '" data-aq></label>') +
+        cats.map((c, ci) => {
+          const si = Math.min(ui.assetSub[ci] || 0, Math.max(0, c.subs.length - 1));
+          const sub = c.subs[si];
+          const items = sub ? sub.items.filter(x => !ui.assetQuery || x.name.toLowerCase().includes(ui.assetQuery.toLowerCase())) : [];
+          const shown = items.slice(0, ui.assetShow[ci] || PAGE);
+          return '<div class="as-cat" data-ci="' + ci + '">' +
+            '<div class="as-cat-h"><b>' + esc(c.title) + '</b><small>' + c.subs.reduce((m, s) => m + s.items.length, 0) + ' 个</small></div>' +
+            '<div class="as-subs">' + c.subs.map((s, i) => '<button class="' + (i === si ? "on" : "") + '" data-sub="' + i + '">' + esc(s.title) + '<em>' + s.items.length + '</em></button>').join("") + '</div>' +
+            (shown.length ? '<div class="as-table">' +
+              '<div class="as-row as-th"><div>名称</div><div>预览图</div><div>类型</div></div>' +
+              shown.map(x => { const ii = sub.items.indexOf(x); return '<div class="as-row">' +
+                '<div class="as-nm" title="' + esc(x.name) + '">' + esc(x.name) + '</div>' +
+                '<div>' + assetPreview(dir, x) + '</div>' +
+                '<div class="as-ty"><span>' + esc(x.type || "") + (x.size != null ? " · " + fmtBytes(x.size) : "") + '</span>' +
+                '<span class="as-ops"><button class="btn btn-ghost" data-as="download" data-ii="' + ii + '">' + icon("download") + '下载</button></span></div>' +
+                '</div>'; }).join("") +
+              '</div>' +
+              (items.length > shown.length ? '<div class="as-more"><button class="btn btn-ghost" data-as="more">再显示 ' + Math.min(PAGE, items.length - shown.length) + ' 个 · 共 ' + items.length + ' 个</button></div>' : "")
+              : '<div class="as-empty">' + (ui.assetQuery ? "没有匹配的资产" : "暂无资产") + '</div>') +
+            '</div>';
+        }).join("");
+      bindAssets(box, ds);
+    }
+
+    function bindAssets(box, ds) {
+      const cats = assetCats(ds.assets), dir = dsDataDir(ds);
+      const q = $("[data-aq]", box);
+      q.oninput = () => { ui.assetQuery = q.value.trim(); ui.assetShow = {}; const pos = q.selectionStart; rAssets(box, ds); const nq = $("[data-aq]", box); nq.focus(); nq.setSelectionRange(pos, pos); };
+      box.onclick = e => {
+        const catEl = e.target.closest("[data-ci]");
+        const ci = catEl ? Number(catEl.dataset.ci) : -1, c = cats[ci];
+        const sb = e.target.closest("[data-sub]");
+        if (sb) { ui.assetSub[ci] = Number(sb.dataset.sub); ui.assetShow[ci] = PAGE; rAssets(box, ds); return; }
+        const b = e.target.closest("[data-as]");
+        if (!b) return;
+        const act = b.dataset.as;
+        const sub = c && c.subs[Math.min(ui.assetSub[ci] || 0, c.subs.length - 1)];
+        if (act === "more") {
+          ui.assetShow[ci] = (ui.assetShow[ci] || PAGE) + PAGE; rAssets(box, ds);
+        } else if (act === "download") {
+          const x = sub.items[Number(b.dataset.ii)];
+          const link = document.createElement("a");
+          link.href = assetSrc(dir, x);
+          link.download = x.fileName || (x.name + "." + (x.type || "svg").toLowerCase());
+          document.body.appendChild(link); link.click(); link.remove();
+          toast("已下载 " + link.download);
+        }
+      };
+    }
+
+    /* ---------- 布局 Pattern ---------- */
+    function patternDoc(ds, state, key, bg) {
+      const vars = themeVars(deriveTheme(ds));
+      const fit = '<scr' + 'ipt>new ResizeObserver(()=>parent.postMessage({cpFrame:"' + key + '",h:document.body.scrollHeight},"*")).observe(document.body);</scr' + 'ipt>';
+      return '<!doctype html><html><head><meta charset="utf-8"><style>:root{' + vars + '}html,body{margin:0}body{background:' + bg + '}</style></head><body>' + state.html + fit + '</body></html>';
+    }
+
+    function rPatterns(box, ds) {
+      const p = ds.patterns;
+      const view = p.view || {}, bg = view.bg || "#fff";
+      box.innerHTML = sectionShell("patterns", p.title || "布局 Pattern", esc(p.desc)) +
+        '<div class="sub-block"><div class="props">视图源码：' + esc((view.html || {}).$file || "—") + ((view.css || {}).$file ? ' · 样式：' + esc(view.css.$file) : "") + '</div></div>' +
+        (p.items || []).map(it => '<div class="sub-block">' +
+          '<div class="sub-title">' + esc(it.name) + (it.label ? '<small>' + esc(it.label) + '</small>' : "") + '</div>' +
+          '<div class="props">适用：' + esc(it.workflow || "—") + ' · 最小窗口：' + esc(it.minWindow || "—") + (it.extends ? ' · 扩展自：' + esc(it.extends) : "") + (it.titleLayer ? ' · ' + esc(it.titleLayer) : "") + '</div>' +
+          '<div class="props">区域（' + (it.regions || []).length + '）：' + (it.regions || []).map(r => esc(r.label) + '（' + esc(r.width) + ' · ' + esc(r.surface) + ' · ' + esc(r.scroll) + '）').join(" → ") + '</div>' +
+          '<div class="props" title="' + esc((it.slots || []).map(s => s.id + " · " + s.owner + " · " + s.cardinality + (s.allowed ? " · 允许 " + s.allowed : "")).join("\n")) + '">槽位（' + (it.slots || []).length + '）：' + (it.slots || []).map(s => esc(s.id) + "：" + esc(s.owner) + " ×" + esc(s.cardinality) + (s.allowed ? "（" + esc(s.allowed) + "）" : "")).join(" · ") + '</div>' +
+          (it.tab ? '<div class="props">标签：' + esc(it.tab) + (it.previewNote ? ' · ' + esc(it.previewNote) : "") + '</div>' : "") +
+          '</div>').join("") +
+        '<div class="sub-block"><div class="sub-title">预览卡片</div>' +
+        (view.cards || []).map(card => {
+          const states = Object.entries(card.states || {});
+          return '<div class="sub-block"><div class="sub-title">' + esc(card.id) + '<small>' + states.length + ' 个状态</small></div>' +
+            states.map(([sk, st]) => {
+              const fid = "pat-" + sk.replace(/[^a-z0-9]/gi, "");
+              if (typeof st.html === "string") return '<div class="props">' + esc(sk) + ' · ' + esc(st.meta || "") + '</div><iframe class="cp-frame" data-frame="' + fid + '" sandbox="allow-scripts allow-same-origin" title="' + esc(sk) + '"></iframe>';
+              return '<div class="props">' + esc(sk) + ' · ' + esc(st.meta || "") + (st.html && st.html.$file ? ' · 源码未随包提供（' + esc(st.html.$file) + '）' : "") + '</div>';
+            }).join("") + '</div>';
+        }).join("") + '</div>';
+      (view.cards || []).forEach(card => Object.entries(card.states || {}).forEach(([sk, st]) => {
+        if (typeof st.html !== "string") return;
+        const fid = "pat-" + sk.replace(/[^a-z0-9]/gi, "");
+        const f = $('.cp-frame[data-frame="' + fid + '"]', box);
+        if (f) f.srcdoc = patternDoc(ds, st, fid, bg);
+      }));
+    }
+
+    /* ================= 页面组装 ================= */
+    const DS_LOGO = ((window.ICONS || {})["ds-logo"] || "");
+    const USAGE_ICON = '<svg viewBox="0 0 14 14" fill="none"><path d="M10.9375 6.98558C10.9375 8.38936 10.1975 9.62093 9.08492 10.3142L9.08456 11.7112C9.08456 11.969 8.87562 12.1779 8.61789 12.1779L5.38211 12.1779C5.12438 12.1779 4.91544 11.969 4.91544 11.7112L4.91508 10.3142C3.80252 9.62093 3.0625 8.38936 3.0625 6.98558C3.0625 4.81892 4.82538 3.0625 7 3.0625C9.17462 3.0625 10.9375 4.81892 10.9375 6.98558Z" fill-rule="evenodd" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.875"/><line x1="4.91552734" x2="9.08464432" y1="13.4472656" y2="13.4472656" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.875"/><path d="M6.99984 0.729492L6.99984 1.45866M11.434 2.56618L10.9184 3.08178M13.2707 7.00033L12.5415 7.00033M0.729004 7.00033L1.45817 7.00033M2.56569 2.56618L3.08129 3.08178" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.875"/></svg>';
+    const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 10 10" fill="none"><path d="M6 1L2 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const CHEV_ICON = '<span class="chev"><svg viewBox="0 0 14 14" fill="none"><path d="M3.5 5L7 8.5L10.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+
+    function buildPage(ds, meta, mapping) {
+      const app = document.getElementById("app");
+      const compItems = (ds.components && ds.components.items) || [];
+      const name = (meta && meta.name) || ds.name;
+      const dm = ds.meta || {};
+      const author = (meta && meta.author) || dm.author || "";
+      const usage = meta && meta.usage != null ? meta.usage : (dm.usage != null ? dm.usage : 0);
+
+      app.innerHTML =
+        '<div class="head">' +
+          '<div class="crumb"><span class="back">' + BACK_ICON + '</span><span class="cur">设计系统</span><span class="sep">/</span><span class="cur">' + esc(name) + '</span></div>' +
+          '<div class="ds-title"><span class="ds-logo">' + DS_LOGO + '</span><div><div class="ds-name">' + esc(name) + '</div>' +
+          '<div class="ds-meta"><span class="avatar">' + esc((author || 'O').charAt(0)) + '</span><span>' + esc(author || 'Octo Agent') + '</span><span class="bar"></span><span class="usage-ic">' + USAGE_ICON + '</span><span>调用量 ' + usage + '</span></div></div></div>' +
+        '</div>' +
+        '<div class="body">' +
+          '<nav class="nav" id="nav">' + SECTIONS.map(s => {
+            const ic = '<span class="nav-ic">' + ((window.ICONS || {})[s.icon] || "") + '</span>';
+            if (s.key === "components" && compItems.length) {
+              return '<div class="nav-grp">' +
+                '<button data-sec="components">' + ic + '组件' + CHEV_ICON + '</button>' +
+                '<div class="nav-sub">' + compItems.map((it, i) => '<button data-cmp="' + i + '">' + esc(it.name) + '</button>').join("") + '</div></div>';
+            }
+            return '<button data-sec="' + s.key + '">' + ic + s.label + '</button>';
+          }).join("") + '</nav>' +
+          '<div class="main" id="main" style="' + themeVars(deriveTheme(ds)) + '">' + SECTIONS.map(s =>
+            '<section class="sec-card" id="sec-' + s.key + '"></section>').join("") + '</div>' +
+        '</div>';
+
+      SECTIONS.forEach(s => renderCard(ds, s.key, mapping));
+
+      const nav = document.getElementById("nav");
+      const main = document.getElementById("main");
+      let scrollLock = false;
+
+      function offsetIn(parent, el) { return el.getBoundingClientRect().top - parent.getBoundingClientRect().top + parent.scrollTop; }
+
+      nav.addEventListener("click", e => {
+        const chev = e.target.closest(".chev");
+        if (chev) { e.stopPropagation(); const grp = chev.closest(".nav-grp"); if (grp) grp.classList.toggle("open"); return; }
+        const sub = e.target.closest("[data-cmp]");
+        if (sub) {
+          const idx = Number(sub.dataset.cmp);
+          const blk = document.getElementById("cmp-" + idx);
+          if (blk) {
+            setNav("components", idx);
+            scrollLock = true;
+            main.scrollTo({ top: offsetIn(main, blk) - 24, behavior: "smooth" });
+            clearTimeout(main._unlock);
+            main._unlock = setTimeout(() => { scrollLock = false; }, 700);
+          }
+          return;
+        }
+        const b = e.target.closest("[data-sec]");
+        if (!b) return;
+        const card = document.getElementById("sec-" + b.dataset.sec);
+        if (card) {
+          const grp = b.closest(".nav-grp");
+          if (grp && !grp.classList.contains("open")) grp.classList.add("open");
+          main.scrollTo({ top: offsetIn(main, card), behavior: "smooth" });
+        }
+      });
+
+      function setNav(sec, cmp) {
+        nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null));
+        nav.querySelectorAll("[data-cmp]").forEach(b => b.classList.toggle("on", sec === "components" && Number(b.dataset.cmp) === cmp));
+      }
+
+      main.addEventListener("scroll", () => {
+        if (scrollLock) return;
+        const top = main.scrollTop + 80;
+        let curKey = SECTIONS.length ? SECTIONS[0].key : "";
+        SECTIONS.forEach(s => {
+          const c = document.getElementById("sec-" + s.key);
+          if (c && offsetIn(main, c) <= top) curKey = s.key;
+        });
+        const atEnd = main.scrollTop + main.clientHeight >= main.scrollHeight - 2;
+        if (atEnd && SECTIONS.length) curKey = SECTIONS[SECTIONS.length - 1].key;
+        let cmp = null;
+        if (curKey === "components") {
+          compItems.forEach((it, i) => {
+            const blk = document.getElementById("cmp-" + i);
+            if (blk && offsetIn(main, blk) <= top + 40) cmp = i;
+          });
+        }
+        setNav(curKey, cmp);
+      });
+      if (SECTIONS.length) setNav(SECTIONS[0].key, null);
+
+      /* 返回：面包屑箭头 + "设计系统"文字 */
+      function goBack() {
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: "ds-back" }, "*");
+        } else if (history.length > 1) {
+          history.back();
+        }
+      }
+      const back = document.querySelector(".head .crumb .back");
+      if (back) back.addEventListener("click", goBack);
+      const crumbCur = document.querySelector(".head .crumb .cur");
+      if (crumbCur) {
+        crumbCur.style.cursor = "pointer";
+        crumbCur.addEventListener("click", goBack);
+      }
+    }
+
+    /* ================= 数据引导 ================= */
+    /* 内嵌模式（iframe 内）：等待宿主 postMessage {type:"ds-data", data:{id, meta}}
+       → fetch systems/{id}/design-system.json + mapping.json → 渲染
+       独立模式：加载 systems/text-to-ui 作为演示数据 */
+    function showError(err) {
+      document.getElementById("app").innerHTML =
+        '<div class="error">加载设计系统数据失败：' + esc(err && err.message ? err.message : String(err)) + '</div>';
+    }
+
+    function loadSystem(id, meta) {
+      const needMapping = SECTIONS.some(s => s.key === "components");
+      return Promise.all([
+        fetch("systems/" + id + "/design-system.json").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
+        needMapping ? fetch("systems/" + id + "/mapping.json").then(r => r.ok ? r.json() : {}).catch(() => ({})) : Promise.resolve({}),
+      ]).then(([ds, mapping]) => {
+        ds.id = ds.id || id;
+        buildPage(ds, meta || {}, mapping);
+      });
+    }
+
+    var booted = false;
+    function boot(payload) {
+      if (booted) return;
+      booted = true;
+      try {
+        loadSystem(payload.id, payload.meta).catch(showError);
+      } catch (err) {
+        showError(err);
+      }
+    }
+
+    if (window.parent !== window) {
+      window.addEventListener("message", e => {
+        if (e.data && e.data.type === "ds-data") boot(e.data.data);
+      });
+      window.parent.postMessage({ type: "ds-ready" }, "*");
+    } else {
+      boot({ id: "text-to-ui", meta: {} });
+    }
+
+    /* 组件沙箱 iframe 高度自适应 */
+    window.addEventListener("message", e => {
+      const d = e.data || {};
+      if (d.cpFrame == null) return;
+      const f = document.querySelector('.cp-frame[data-frame="' + d.cpFrame + '"]');
+      if (f) f.style.height = Math.max(120, Math.min(d.h, 600)) + "px";
+    });
+  </script>
+</body>
+</html>
