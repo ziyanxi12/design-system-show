@@ -1,0 +1,14 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #f1f5f9;
+}
+
+/* 侧边栏子元素纵向 flex：菜单 flex:1 撑开，用户信息沉底（antd 默认只有 height:100%） */
+.ant-layout-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+}

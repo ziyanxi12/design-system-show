@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>设计系统管理台 - 登录</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'PingFang SC', sans-serif;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      width: 380px;
+      background: #fff;
+      border-radius: 16px;
+      padding: 36px 32px 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .logo {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 20px;
+      margin: 0 auto 16px;
+    }
+    h1 { font-size: 20px; font-weight: 700; color: #1e293b; text-align: center; }
+    .subtitle { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 4px; margin-bottom: 28px; }
+
+    .section-title { font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 10px; }
+
+    .preset-list { display: flex; flex-direction: column; gap: 8px; }
+    .preset-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; border-radius: 10px;
+      border: 1px solid #e2e8f0; background: #f8fafc;
+      cursor: pointer; transition: all 0.15s; text-align: left;
+    }
+    .preset-btn:hover { border-color: #6366f1; background: #eef2ff; }
+    .preset-name { font-size: 14px; font-weight: 600; color: #1e293b; }
+    .preset-account { font-size: 12px; color: #94a3b8; flex: 1; }
+    .badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .badge-ok { background: #dcfce7; color: #16a34a; }
+    .badge-no { background: #fee2e2; color: #dc2626; }
+
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 24px 0; color: #cbd5e1; font-size: 12px;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: #e2e8f0;
+    }
+
+    form { display: flex; flex-direction: column; gap: 12px; }
+    input {
+      padding: 10px 14px; border-radius: 10px;
+      border: 1px solid #e2e8f0; font-size: 14px; outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+
+    .login-btn {
+      padding: 10px; border-radius: 10px; border: none;
+      background: #6366f1; color: #fff; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .login-btn:hover { background: #4f46e5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">D</div>
+    <h1>设计系统管理台</h1>
+    <p class="subtitle">开发用登录页 · 预设账号对齐设计系统白名单</p>
+
+    <div class="section-title">快速登录（预设账号）</div>
+    <div class="preset-list">
+      <button class="preset-btn" data-account="admin">
+        <span class="preset-name">管理员</span>
+        <span class="preset-account">admin</span>
+        <span class="badge badge-ok">白名单 · 超管</span>
+      </button>
+      <button class="preset-btn" data-account="lisi">
+        <span class="preset-name">李四</span>
+        <span class="preset-account">lisi</span>
+        <span class="badge badge-ok">白名单 · 管理员</span>
+      </button>
+      <button class="preset-btn" data-account="outsider">
+        <span class="preset-name">路人</span>
+        <span class="preset-account">outsider</span>
+        <span class="badge badge-no">非白名单</span>
+      </button>
+    </div>
+
+    <div class="divider"><span>或自定义账号</span></div>
+
+    <form id="custom-form">
+      <input type="text" id="input-account" placeholder="账号" required />
+      <input type="text" id="input-nickname" placeholder="昵称" required />
+      <button type="submit" class="login-btn">登录</button>
+    </form>
+  </div>
+
+  <script>
+    var params = new URLSearchParams(window.location.search)
+    var redirect = localStorage.getItem('login_redirect')
+      || params.get('redirect')
+      || '/'
+    localStorage.removeItem('login_redirect')
+
+    var PRESETS = {
+      admin:    { account: 'admin',    nickName: '管理员', dept: ['技术部'], deptCode: ['T001'], roleID: '1',  roles: ['admin', 'super'], uid: 1001, userID: 'u-admin-001' },
+      lisi:     { account: 'lisi',     nickName: '李四',   dept: ['设计部'], deptCode: ['D001'], roleID: '2',  roles: ['designer'],       uid: 1002, userID: 'u-lisi-002' },
+      outsider: { account: 'outsider', nickName: '路人',   dept: ['外部'],   deptCode: ['G001'], roleID: '99', roles: ['guest'],          uid: 9999, userID: 'u-outsider-999' },
+    }
+
+    function login(data) {
+      localStorage.setItem('userInfo', JSON.stringify(data))
+      window.location.href = redirect
+    }
+
+    document.querySelectorAll('.preset-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.dataset.account
+        login(PRESETS[key])
+      })
+    })
+
+    document.getElementById('custom-form').addEventListener('submit', function (e) {
+      e.preventDefault()
+      var account  = document.getElementById('input-account').value.trim()
+      var nickName = document.getElementById('input-nickname').value.trim()
+      if (!account || !nickName) return
+      login({ account: account, nickName: nickName })
+    })
+  </script>
+</body>
+</html>
