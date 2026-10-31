@@ -1,7 +1,7 @@
 import { createSignal, createMemo, For, Show } from "solid-js"
 import type { JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
-import { DS_REGISTRY, type DsEntry } from "./data"
+import { DS_REGISTRY, dsLoadState, type DsEntry } from "./data"
 import DesignSystemDetail from "./detail"
 
 function SearchIcon(): JSX.Element {
@@ -48,8 +48,8 @@ export default function DesignSystemPage(): JSX.Element {
 
   const filtered = createMemo(() => {
     const q = query().toLowerCase().trim()
-    if (!q) return DS_REGISTRY
-    return DS_REGISTRY.filter((r) => r.meta.name.toLowerCase().includes(q))
+    if (!q) return DS_REGISTRY()
+    return DS_REGISTRY().filter((r) => r.meta.name.toLowerCase().includes(q))
   })
 
   function handleCardClick(item: DsEntry) {
@@ -57,7 +57,7 @@ export default function DesignSystemPage(): JSX.Element {
   }
 
   return (
-    <Show when={!params.id} fallback={<DesignSystemDetail id={params.id} />}>
+    <Show when={!params.id} fallback={<DesignSystemDetail id={params.id!} />}>
       <div class="flex-1 overflow-auto" style="background:#fff">
         <style>{`
           .ds-list { padding: 60px 112px 48px; }
@@ -111,7 +111,7 @@ export default function DesignSystemPage(): JSX.Element {
                     <div class="badges">
                       {item.meta.default && <span class="tag brand">默认</span>}
                     </div>
-                    <img src={`/design-systems/${item.meta.cover ?? "cover-cyan.jpg"}`} alt={item.meta.name} />
+                    <img src={item.meta.coverImg ?? ""} alt={item.meta.name} />
                   </div>
                   <div class="name" title={item.meta.name}>{item.meta.name}</div>
                   <div class="meta">
@@ -127,9 +127,14 @@ export default function DesignSystemPage(): JSX.Element {
                 </button>
               )}
             </For>
-            {filtered().length === 0 && (
+            <Show when={dsLoadState() !== "ready"}>
+              <div class="dl-empty">
+                {dsLoadState() === "loading" ? "正在加载设计系统列表…" : "设计系统列表加载失败，请稍后重试"}
+              </div>
+            </Show>
+            <Show when={dsLoadState() === "ready" && filtered().length === 0}>
               <div class="dl-empty">没有找到匹配「{query()}」的设计系统</div>
-            )}
+            </Show>
           </div>
         </div>
       </div>

@@ -541,7 +541,7 @@
         // 基础色阶和语义色统一用卡片展示，色阶按从浅到深的顺序排
         (c.palettes || []).map(p => '<div class="sub-block"><div class="sub-title">' + esc(p.title) + '<small>' + p.steps.length + ' 个 · 基础色阶</small></div>' +
           '<div class="swatches">' + p.steps.map(s => sw(s)).join("") + '</div></div>').join("") +
-        c.groups.map(g => '<div class="sub-block">' + ((c.palettes || []).length && c.groups.length === 1 ? "" : '<div class="sub-title">' + esc(g.title) + '<small>' + g.tokens.length + ' 个' + (g.desc ? ' · ' + esc(g.desc) : "") + '</small></div>') +
+        (c.groups || []).map(g => '<div class="sub-block">' + ((c.palettes || []).length && (c.groups || []).length === 1 ? "" : '<div class="sub-title">' + esc(g.title) + '<small>' + g.tokens.length + ' 个' + (g.desc ? ' · ' + esc(g.desc) : "") + '</small></div>') +
           '<div class="swatches">' + g.tokens.map(t => sw(t)).join("") + '</div></div>').join("") +
         rulesHtml(c.rules);
       bindCopy(box);
@@ -1130,14 +1130,15 @@
     }
 
     function loadSystem(id, meta) {
-      const needMapping = SECTIONS.some(s => s.key === "components");
-      return Promise.all([
-        fetch("systems/" + id + "/design-system.json").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
-        needMapping ? fetch("systems/" + id + "/mapping.json").then(r => r.ok ? r.json() : {}).catch(() => ({})) : Promise.resolve({}),
-      ]).then(([ds, mapping]) => {
-        ds.id = ds.id || id;
-        buildPage(ds, meta || {}, mapping);
-      });
+      // 数据源唯一：展示端注入的 jsonUrl（来自 api1 返回值）；无数据源直接报错，不再回退本地文件
+      const jsonUrl = meta && meta.jsonUrl;
+      if (!jsonUrl) {
+        showError(new Error("缺少数据源 jsonUrl：请从设计系统展示端进入本页"));
+        return Promise.resolve();
+      }
+      return fetch(jsonUrl)
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(ds => { ds.id = ds.id || id; buildPage(ds, meta || {}, {}); });
     }
 
     var booted = false;
@@ -1157,7 +1158,9 @@
       });
       window.parent.postMessage({ type: "ds-ready" }, "*");
     } else {
-      boot({ id: "text-to-ui", meta: {} });
+      // 直接打开（无父页面）：无数据注入，提示从展示端进入——不再回退本地数据
+      document.getElementById("app").innerHTML =
+        '<div class="error">本页需由设计系统展示端打开（数据由展示端经 api1 的 json_url 注入），请从展示端列表进入。</div>';
     }
 
     /* 组件沙箱 iframe 高度自适应 */
