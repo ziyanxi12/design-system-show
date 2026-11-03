@@ -4,7 +4,11 @@
 > 后端：在 `lib-resource-service` 中新增 `routers/design_systems.py` 实现，存储走 `FILE_ROOT_DIR`
 > （本地 `./storage`，生产 `/data/resource`），文件相对路径 `design-systems/{slug}/design-system.json`
 >
-> 请求头：`octo-vs-token` + `X-User-Data`（AES-CBC 加密 userInfo）；用户联想搜索复用 `/api/users/search`。
+> 上传文件为 **DESIGN.md**（octo-design-md/1 格式：YAML frontmatter + `## 章节 {#anchor}` 正文 +
+> ` ```json design ` 代码块），服务端解析为 design-system.json（`app/services/design_system_md.py`，
+> 移植自 demo 的 `script/extract_design_md.py`）；MD 模版见管理台 `public/templates/design-system.template.md`。
+>
+> 请求头：`octo-vs-token` + `X-User-Data`（AES-CBC 加密 userInfo）；人员搜索走独立服务 `GET /getAccount?keyword=`（mock 3090，需 `uiplusToken` 头），头像走 `GET /face/{account去首字符}/{size}`（mock 3091），见 mock-api/api.md。
 
 ## 通用约定
 
@@ -31,13 +35,18 @@
       "slug": "h-design",
       "name": "H Design 官网设计规范",
       "desc": "…",
-      "author": "罗唯",
+      "author": [
+        { "id": 112, "userID": "u00112", "account": "l20031135", "nickName": "罗唯", "dept": ["华为", "2012实验室", "UX部", "设计二组"] }
+      ],
       "usage": 143,
       "cover": "cover-blue.jpg",
       "cover_url": "/static/design-systems/covers/cover-blue.jpg",
+      "icon": "design-systems/icons/h-design.svg",
+      "icon_url": "/static/design-systems/icons/h-design.svg",
       "json_url": "/static/design-systems/h-design/design-system.json",
+      "design_md_url": "/static/design-systems/h-design/source.md",
       "default": true,
-      "file_size": 234726,
+      "file_size": 194067,
       "created_by": "luowei",
       "updated_by": "luowei",
       "created_by_name": "罗唯 luowei",
@@ -48,9 +57,20 @@
 }
 ```
 
-- `cover_url` / `json_url`：**完整 URL**（含域名），由 `PUBLIC_ORIGIN` 驱动（对齐 lib-resource `_to_public_url`）：
-  `PUBLIC_ORIGIN` 非空 → `{PUBLIC_ORIGIN}{ROOT_PATH}/static/...`（生产：真实域名 + `ROOT_PATH=/aaa`；
-  本地开发：`PUBLIC_ORIGIN=http://localhost:8009` 直接跨域访问，后端 CORS 已放开）
+- `author`：**对象数组**，条目为 `/getAccount`（人员搜索服务）返回的**完整值**（驼峰原样）：
+  `[{id, userID, account, nickName, dept: [4级部门数组]}]`；写入时服务端按 account 兜底补全 nickName/dept
+  （查 users 表，查不到保持原值，允许外部作者）。旧字符串数据读取时自动包装为单元素（昵称语义）。
+  展示约定（前端）：**管理台**显示 `nickName(account)`（列表/弹窗 >2 人折叠为「前 2 + 等 N 人」，
+  hover tip 展示全量）；**展示端**只显示 `nickName`（回落 account；卡片 >2 人同样折叠 + hover 气泡全量）；
+  头像来自独立服务 `GET /face/{account 去掉首字符}/{size}`（mock 3091 直连）
+- `icon` / `icon_url`：`icon` 为自定义图标相对路径（**null=未自定义**）；`icon_url` **恒有值**——未自定义时回落内置默认图标
+  `design-systems/icons/icon-default.svg`（品牌紫圆角 + DS 字样；`BUILTIN_ICONS` 列表结构，便于后续扩充内置图标集）；
+  `file_size` 为上传的 MD 原件大小
+- `json_url` / `design_md_url`：**design-system.json（服务端解析产物，展示端数据源）与 DESIGN.md 原件**的可访问 URL；
+  两者均由 `PUBLIC_ORIGIN` 驱动（对齐 lib-resource `_to_public_url`）：`PUBLIC_ORIGIN` 非空 →
+  `{PUBLIC_ORIGIN}{ROOT_PATH}/static/...`（生产：真实域名 + `ROOT_PATH=/aaa`；本地开发：
+  `PUBLIC_ORIGIN=http://localhost:8009` 直接跨域访问，后端 CORS 已放开）。管理台文件行展示/下载的是
+  DESIGN.md（用户面主文件）；无 MD 的旧数据 `design_md_url` 为 null
 - `json_url`：展示端详情数据源；`created_by/updated_by` 为 account，`*_name` 为「昵称 account」显示名——直查 users 表解析，无记录时回落 account
 - 排序：`default` 置顶，其余按 slug 字典序
 
@@ -60,21 +80,26 @@
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| file | File | design-system.json（≤10MB） |
-| name / desc / author / usage / cover / default | 可选 | 卡片字段，覆盖从 JSON 派生的默认值 |
-| cover_file | File? | 可选自定义封面图片（jpg/png/webp ≤2MB），上传后存 `design-systems/covers/{slug}.{ext}`，`cover` 列存完整相对路径；不上传则 `cover` 字段回落内置名（默认 `cover-cyan.jpg`） |
+| file | File | **DESIGN.md**（octo-design-md/1 格式，≤10MB；仅收 .md/.markdown，服务端解析为 design-system.json） |
+| name / desc | 可选 | 卡片字段，覆盖从 MD 派生的默认值 |
+| author | 可选 | 作者，**JSON 数组字符串**（/getAccount 返回的完整值条目：`[{id, userID, account, nickName, dept}]`）；缺省回落 MD 派生（frontmatter author 视为 account）；写入时服务端按 account 兜底补全 |
+| usage / default | 可选 | 调用量 / 默认标记 |
+| cover_file | File? | 可选自定义封面（jpg/png/webp ≤2MB），存 `design-systems/covers/{slug}.{ext}`；不上传则 `cover` 回落内置名（默认 `cover-cyan.jpg`） |
+| icon_file | File? | 可选图标（jpg/png/webp/svg ≤2MB），存 `design-systems/icons/{slug}.{ext}`；svg 服务端消毒（剥离 script/on*= / javascript: / foreignObject）+ 响应加 CSP 头 |
 
-**服务端校验**（失败返回 400，detail 为错误列表拼接）：
+**服务端校验**（失败返回 400，detail 为错误说明/错误列表拼接）：
 
-1. JSON 可解析且为对象
-2. `id` 字段：匹配 `^[a-z0-9][a-z0-9-]*$`（作为 slug）
-3. `name` 字段非空
-4. `color` / `typography` / `spacing` / `radius` / `shadow` 至少一个为对象（保证展示端模板可渲染）
-5. `cover` 字段（表单/JSON）：仅认内置封面名（cover-blue/cyan/purple/violet.jpg），其余回落默认 `cover-cyan.jpg`（不报错）；自定义封面由 `cover_file` 上传写入，不接受表单直接传入相对路径
-6. slug 已存在 → **409**（提示走重传）
-7. `cover_file` 超 2MB / 非 jpg/png/webp → 400
+1. 扩展名 .md / .markdown（其余 400「仅支持上传 DESIGN.md」）
+2. MD 可解析：必须有 frontmatter；各章节 ` ```json design ` 代码块须为合法 JSON
+3. 解析结果的 `id` 匹配 `^[a-z0-9][a-z0-9-]*$`（作为 slug）
+4. `name` 非空
+5. `color` / `typography` / `spacing` / `radius` / `shadow` 至少一个区块（保证展示端模板可渲染）
+6. slug 已存在（活跃记录）→ **409**（提示走重传）；**软删记录**占用 slug 的 DB 唯一约束 → 同 slug 重建时**复活该行**（保留 id 与历史操作日志关联，字段全量覆盖）
+7. `cover_file` / `icon_file` 超 2MB / 类型不符 → 400
 
-**行为**：存储文件到 `FILE_ROOT_DIR/design-systems/{slug}/design-system.json`；上传 `cover_file` 时另存到 `design-systems/covers/{slug}.{ext}`（文件名固定用 slug 拼扩展名，无路径注入风险），写 `design_systems` 表记录与操作日志；`default=true` 时清除其他系统的默认标记。
+**行为**：MD 解析为 design-system.json 存 `design-systems/{slug}/design-system.json`，MD 原件存
+`design-systems/{slug}/source.md`（`source_md_path` 列记录，驱动 `design_md_url`）；写 `design_systems`
+表记录与操作日志；`default=true` 时清除其他系统的默认标记。
 
 **响应**：同列表 item 结构。
 
@@ -88,18 +113,21 @@
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| name / desc / author / default | 可选表单字段 | 卡片字段（slug 不可改） |
+| name / desc / default | 可选表单字段 | 卡片字段（slug 不可改） |
+| author | 可选 | 作者，**JSON 数组字符串**（/getAccount 完整值条目，空数组清空作者）；写入时按 account 兜底补全 |
 | usage | 可选 | 调用量修正通道（API 层保留）；**界面不提供编辑入口**，手动修正走此字段 |
 | cover_file | File? | 可选新封面（jpg/png/webp ≤2MB）；上传则覆盖现有封面，不上传则保留现有封面 |
+| icon_file | File? | 可选新图标（jpg/png/webp/svg ≤2MB）；上传则覆盖现有图标，不上传则保留现有图标 |
 
 **行为**：更新记录与 `updated_at`，写操作日志；`default=true` 时清除其他默认。
 **响应**：更新后的 item。
 
 ### 5. PUT /api/design-systems/{slug}/json —— 重传覆盖
 
-**请求**：`multipart/form-data`，字段 `file`。
-**校验**：同上传 1-5；另要求 JSON 的 `id` 与 `{slug}` 一致，否则 400。
-**行为**：替换文件与记录的 `name/file_size/updated_at`；**现有封面保留**（不再被 JSON 的 cover 重置，避免自定义封面被冲掉）；作者/调用量/描述/默认标记保留。
+**请求**：`multipart/form-data`，字段 `file`（新 **DESIGN.md**，仅收 .md）。
+**校验**：同上传 1-5；另要求解析结果的 `id` 与 `{slug}` 一致，否则 400。
+**行为**：解析新 MD 后替换 `design-system.json` 与 `source.md`（同步更新 `source_md_path`）；`name/file_size`
+跟随新 MD；**封面/图标/作者/调用量/描述/默认标记保留**（管理字段不被 MD 重置）。
 
 ### 6. DELETE /api/design-systems/{slug} —— 删除
 
@@ -176,16 +204,21 @@ is_active（软删）、created_at/updated_at。
 - `created_at` 为 epoch 毫秒；`detail` 已解析为对象（无则 null）
 - 动作枚举：设计系统 → create / update_meta / reupload / delete；白名单 → create / update / delete
 
-## 数据表（design_systems）| 列 | 类型 | 说明 |
+## 数据表（design_systems）
+
+| 列 | 类型 | 说明 |
 |---|---|---|
 | id | int PK | 自增 |
-| slug | varchar(100) UNIQUE | 系统标识（来自 JSON 的 id） |
-| name / desc / author | varchar/text | 卡片字段 |
+| slug | varchar(100) UNIQUE | 系统标识（解析自 MD 的 id），对外统一使用 |
+| name / desc | varchar(255) / text | 卡片字段 |
 | usage | int | 调用量（默认 0） |
-| cover | varchar(100) | 内置封面文件名（cover-cyan.jpg）或自定义封面完整相对路径（design-systems/covers/{slug}.webp） |
+| author | text | 作者，JSON 数组字符串（/getAccount 完整值：`[{id, userID, account, nickName, dept}]`）；旧数据为纯字符串（昵称语义），读取时自动包装 |
+| cover | varchar(100) | 内置封面名（cover-cyan.jpg）或自定义封面相对路径（design-systems/covers/{slug}.webp） |
+| icon | text | 图标相对路径（design-systems/icons/{slug}.svg），无则空 |
 | is_default | bool | 默认系统（全局至多一个） |
-| file_path | varchar(500) | 相对 FILE_ROOT_DIR 的路径 |
-| file_size | int | bytes |
+| file_path | varchar(500) | 解析产物 JSON 相对路径 |
+| source_md_path | varchar(500) | DESIGN.md 原件相对路径（design_md_url 数据源，软删重建时也更新） |
+| file_size | int | 上传的 MD 原件 bytes |
 | created_by / updated_by | varchar(100) | 操作人（AuthMiddleware 解密） |
 | is_deleted | int | 软删标记 |
 | created_at / updated_at | datetime | |
@@ -196,9 +229,12 @@ is_active（软删）、created_at/updated_at。
 {FILE_ROOT_DIR}/                      本地 ./storage，生产 /data/resource
 └─ design-systems/
    ├─ covers/                         内置封面（cover-blue/cyan/purple/violet.jpg）+ 自定义封面（{slug}.{jpg|png|webp}）
-   ├─ h-design/design-system.json
-   ├─ ict-pc/design-system.json
-   └─ text-to-ui/design-system.json   （种子：现有 3 系统由脚本导入）
+   ├─ icons/                          内置默认图标（icon-default.svg）+ 自定义图标（{slug}.{jpg|png|webp|svg}；svg 消毒 + CSP 响应头）
+   ├─ h-design/
+   │  ├─ design-system.json           服务端解析 MD 产物（展示端数据源）
+   │  └─ source.md                    上传的 DESIGN.md 原件（可追溯）
+   ├─ ict-pc/…
+   └─ text-to-ui/…                    （种子：现有 3 系统由脚本导入）
 ```
 
 ## 种子迁移

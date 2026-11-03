@@ -2,16 +2,39 @@ export interface DesignSystemMeta {
   slug: string
   name: string
   desc?: string
-  author?: string
+  author?: string | AuthorEntry[]
   usage?: number
   cover?: string
   default?: boolean
 }
 
+/** 作者条目（API 的 author 数组元素；为 /getAccount 返回的完整值，驼峰原样存储） */
+export interface AuthorEntry {
+  id?: number | null
+  userID?: string | null
+  account: string
+  nickName?: string | null
+  /** 部门（最多 4 级数组） */
+  dept?: string[] | null
+}
+
+/** 作者显示标签：两者都有 → nickName(account)；缺一只显示有的那个 */
+export function authorLabel(a: AuthorEntry): string {
+  if (a.nickName && a.account) return `${a.nickName}(${a.account})`
+  return (a.nickName || a.account || '').trim()
+}
+
 export interface DesignSystemItem extends DesignSystemMeta {
+  author: AuthorEntry[]
   cover_url: string
+  /** 图标相对路径（null=未自定义，走内置默认图标） */
+  icon?: string | null
+  /** 图标完整 URL（服务端对未自定义的回落内置默认图标，恒有值） */
+  icon_url: string
   /** design-system.json 可直接 fetch 的地址 */
   json_url: string
+  /** DESIGN.md 原件可下载地址（旧数据可能为 null） */
+  design_md_url?: string | null
   /** 创建人 / 最后编辑人（account）及显示名（"昵称 account"，无用户记录时回落 account） */
   created_by: string
   updated_by: string
@@ -75,12 +98,4 @@ export interface OperationLogsParams {
   limit: number
   action?: string
   target_type?: string
-}
-
-/** /api/users/search 联想结果 */
-export interface SearchUser {
-  userID: string
-  account: string
-  nickName: string
-  dept: string[]
 }

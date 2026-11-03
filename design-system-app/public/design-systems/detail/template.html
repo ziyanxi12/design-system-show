@@ -52,7 +52,10 @@
     .head .ds-name { font-size: 16px; line-height: 24px; font-weight: 500; color: var(--text-primary); }
     .head .ds-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; color: var(--text-secondary); font-size: 14px; line-height: 20px; }
     .head .ds-meta .bar { width: 1px; height: 12px; background: var(--border-1); }
-    .head .ds-meta .avatar { width: 16px; height: 16px; border-radius: 50%; background: var(--brand); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; }
+    .head .ds-meta .avatar { width: 16px; height: 16px; border-radius: 50%; background: var(--brand); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; flex-shrink: 0; }
+    .head .ds-meta .faces { display: inline-flex; align-items: center; }
+    .head .ds-meta .faces .face { width: 18px; height: 18px; border-radius: 50%; margin-right: -6px; border: 1px solid #fff; background: #E9EEF8; }
+    .head .ds-meta .faces .face:last-child { margin-right: 0; }
     .head .ds-meta .usage-ic { width: 14px; height: 14px; color: var(--text-secondary); }
     .head .ds-meta .usage-ic svg { width: 14px; height: 14px; }
 
@@ -1020,14 +1023,31 @@
       const compItems = (ds.components && ds.components.items) || [];
       const name = (meta && meta.name) || ds.name;
       const dm = ds.meta || {};
-      const author = (meta && meta.author) || dm.author || "";
-      const usage = meta && meta.usage != null ? meta.usage : (dm.usage != null ? dm.usage : 0);
+      // 作者：优先 postMessage 的 authors 对象数组（nickName(account) 格式），回落旧字符串字段
+      var FACE_API_BASE = "http://localhost:3091";
+      var faceUrl = function (account, size) { return FACE_API_BASE + "/face/" + String(account).slice(1) + "/" + (size || 32); };
+      var authorsArr = (meta && meta.authors) || [];
+      var authorLabel = function (a) {
+        a = a || {};
+        // 展示端只显示昵称（回落账号）；管理台才显示 nickName(account) 完整格式
+        return String(a.nickName || a.account || "").trim();
+      };
+      var authorHtml = authorsArr.map(function (a) {
+        if (!a || !a.account) return "";
+        return '<img class="face" src="' + esc(faceUrl(a.account)) + '" alt="' + esc(authorLabel(a)) + '" />';
+      }).join("");
+      var authorNames = authorsArr.map(authorLabel).filter(Boolean).join("、");
+      var author = authorNames || (meta && meta.author) || dm.author || "";
+      var authorBlock = authorHtml
+        ? '<span class="faces">' + authorHtml + '</span><span>' + esc(author) + '</span>'
+        : '<span class="avatar">' + esc((author || 'O').charAt(0)) + '</span><span>' + esc(author || 'Octo Agent') + '</span>';
+      var usage = meta && meta.usage != null ? meta.usage : (dm.usage != null ? dm.usage : 0);
 
       app.innerHTML =
         '<div class="head">' +
           '<div class="crumb"><span class="back">' + BACK_ICON + '</span><span class="cur">设计系统</span><span class="sep">/</span><span class="cur">' + esc(name) + '</span></div>' +
           '<div class="ds-title"><span class="ds-logo">' + DS_LOGO + '</span><div><div class="ds-name">' + esc(name) + '</div>' +
-          '<div class="ds-meta"><span class="avatar">' + esc((author || 'O').charAt(0)) + '</span><span>' + esc(author || 'Octo Agent') + '</span><span class="bar"></span><span class="usage-ic">' + USAGE_ICON + '</span><span>调用量 ' + usage + '</span></div></div></div>' +
+          '<div class="ds-meta">' + authorBlock + '<span class="bar"></span><span class="usage-ic">' + USAGE_ICON + '</span><span>调用量 ' + usage + '</span></div></div></div>' +
         '</div>' +
         '<div class="body">' +
           '<nav class="nav" id="nav">' + SECTIONS.map(s => {

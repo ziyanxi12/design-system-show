@@ -8,6 +8,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd'
 import {
@@ -19,7 +20,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { api } from '../api/client'
-import type { DesignSystemItem } from '../types'
+import { authorLabel, type DesignSystemItem } from '../types'
 import DesignSystemFormModal, { type FormMode } from '../components/DesignSystemFormModal'
 import { useRole } from '../components/AuthGuard'
 
@@ -118,7 +119,23 @@ export default function DesignSystemList() {
         </Space>
       ),
     },
-    { title: '作者', dataIndex: 'author', key: 'author', width: 110, render: (v) => v || '—' },
+    {
+      title: '作者',
+      dataIndex: 'author',
+      key: 'author',
+      width: 170,
+      // 显示格式 nickName(account)；>2 个只显示前 2 个 +「等N人」，hover Tooltip 展示全量
+      render: (v: DesignSystemItem['author']) => {
+        if (!Array.isArray(v) || v.length === 0) return '—'
+        const all = v.map(authorLabel).filter(Boolean)
+        const brief = all.length > 2 ? `${all.slice(0, 2).join('、')} 等${all.length}人` : all.join('、')
+        return (
+          <Tooltip title={all.join('、')} placement="topLeft">
+            <span style={{ cursor: 'default' }}>{brief}</span>
+          </Tooltip>
+        )
+      },
+    },
     {
       title: '创建人',
       dataIndex: 'created_by_name',

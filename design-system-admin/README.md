@@ -45,8 +45,7 @@ src/
 │   ├── errors.ts        ApiError
 │   └── validate.ts      design-system.json 前端校验 + meta 派生
 ├── components/
-│   ├── DesignSystemFormModal.tsx   三态弹窗（新增/编辑/查看），含 JSON 上传校验与封面选择
-│   ├── JsonPreviewModal.tsx        JSON 预览/复制
+│   ├── DesignSystemFormModal.tsx   三态弹窗（新增/编辑/查看），含 DESIGN.md 上传、作者多选与封面/图标选择
 │   └── AuthGuard.tsx               登录态 + 白名单校验 + 角色上下文（useRole）
 ├── pages/
 │   ├── Layout.tsx       侧边栏布局（菜单 + 底部用户区）

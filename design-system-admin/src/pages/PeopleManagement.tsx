@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   App,
-  AutoComplete,
   Button,
   Card,
-  Form,
-  Input,
-  Modal,
   Popconfirm,
   Select,
   Table,
@@ -16,15 +12,9 @@ import {
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { api, ApiError } from '../api/client'
-import type { SearchUser, WhitelistAccount } from '../types'
+import { api } from '../api/client'
+import type { AuthorEntry, WhitelistAccount } from '../types'
 import { useRole } from '../components/AuthGuard'
-
-interface FormValues {
-  account: string
-  nick_name?: string
-  role: string
-}
 
 /** 角色下拉选项（表格行内与新增弹窗共用；Tag 去外边距以适配 borderless 下拉） */
 const ROLE_OPTIONS = [
@@ -32,7 +22,7 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: <Tag color="blue" style={{ margin: 0 }}>管理员</Tag> },
 ]
 
-/** 人员管理：白名单账号列表（5 列），写操作（新增/删除）仅 super */
+/** 人员管理：白名单账号列表（5 列）；顶部搜索多选 + 点「增加」批量添加（/getAccount 联想），写操作仅 super */
 export default function PeopleManagement() {
   const { message } = App.useApp()
   const role = useRole()
@@ -41,15 +31,16 @@ export default function PeopleManagement() {
   const [list, setList] = useState<WhitelistAccount[]>([])
   const [loading, setLoading] = useState(false)
 
-  const [modalOpen, setModalOpen] = useState(false)
-  const [form] = Form.useForm<FormValues>()
-
-  // 账号联想搜索（外部 API，300ms 防抖 + 超时取消）
+  // /getAccount 联想搜索（300ms 防抖 + 超时取消）
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
   const [searching, setSearching] = useState(false)
-  const userMap = useRef<Map<string, SearchUser>>(new Map())
+  const userMap = useRef<Map<string, AuthorEntry>>(new Map())
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // 批量添加：多选攒着，点「增加」批量创建
+  const [pendingAccounts, setPendingAccounts] = useState<string[]>([])
+  const [adding, setAdding] = useState(false)
 
   const reload = () => {
     setLoading(true)
@@ -76,11 +67,11 @@ export default function PeopleManagement() {
       const timeoutId = setTimeout(() => controller.abort(), 6000)
       setSearching(true)
       try {
-        const data = await api.searchUsers(value.trim(), controller.signal)
-        userMap.current.clear()
-        data.items.forEach((u) => userMap.current.set(u.account, u))
+        const items = await api.searchAccounts(value.trim(), controller.signal)
+        // 累积合并（不清空）：多轮搜索选人后，早前选中项的昵称等信息仍可查
+        items.forEach((u) => userMap.current.set(u.account, u))
         setOptions(
-          data.items.map((u) => ({
+          items.map((u) => ({
             value: u.account,
             label: `${u.nickName || u.account} · ${u.account}`,
           })),
@@ -94,32 +85,30 @@ export default function PeopleManagement() {
     }, 300)
   }
 
-  const onSelectUser = (account: string) => {
-    const u = userMap.current.get(account)
-    if (u?.nickName) form.setFieldValue('nick_name', u.nickName)
-  }
-
-  const openCreate = () => {
-    form.resetFields()
-    form.setFieldsValue({ role: 'admin' })
-    setOptions([])
-    setModalOpen(true)
-  }
-
-  const submit = async () => {
-    const values = await form.validateFields()
-    try {
-      await api.createWhitelist({
-        account: values.account.trim(),
-        nick_name: values.nick_name,
-        role: values.role,
-      })
-      message.success(`已新增「${values.account}」`)
-      setModalOpen(false)
-      reload()
-    } catch (e) {
-      message.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e))
+  /** 批量添加：逐个创建（角色默认 admin，行内下拉可改），已存在计入跳过；完成后清空选择并刷新 */
+  const handleBatchAdd = async () => {
+    if (!pendingAccounts.length) return
+    setAdding(true)
+    let added = 0
+    let skipped = 0
+    for (const account of pendingAccounts) {
+      const u = userMap.current.get(account)
+      try {
+        await api.createWhitelist({
+          account,
+          nick_name: u?.nickName ?? '',
+          role: 'admin',
+        })
+        added++
+      } catch {
+        // 账号已存在等校验失败：计入跳过，不打断批次
+        skipped++
+      }
     }
+    message.success(`添加完成：新增 ${added} 个${skipped > 0 ? `，跳过 ${skipped} 个（已存在）` : ''}`)
+    setPendingAccounts([])
+    setAdding(false)
+    if (added > 0) reload()
   }
 
   const doDelete = async (it: WhitelistAccount) => {
@@ -208,48 +197,35 @@ export default function PeopleManagement() {
     <Card
       title={`人员管理（共 ${list.length} 个）`}
       extra={
-        isSuper && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            新增账号
-          </Button>
-        )
+        isSuper ? (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <Select
+              mode="multiple"
+              value={pendingAccounts}
+              options={options}
+              onSearch={handleSearch}
+              onChange={(vals) => setPendingAccounts(vals as string[])}
+              placeholder="搜索并选择要添加的用户（可多选）"
+              notFoundContent={searching ? '搜索中…' : '未找到匹配人员'}
+              filterOption={false}
+              style={{ width: 300 }}
+              allowClear
+              disabled={adding}
+            />
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              loading={adding}
+              disabled={!pendingAccounts.length}
+              onClick={handleBatchAdd}
+            >
+              增加
+            </Button>
+          </div>
+        ) : undefined
       }
     >
       <Table rowKey="id" columns={columns} dataSource={list} loading={loading} pagination={false} size="middle" />
-
-      <Modal
-        title="新增账号"
-        open={modalOpen}
-        onOk={submit}
-        onCancel={() => setModalOpen(false)}
-        okText="新增"
-        cancelText="取消"
-        forceRender
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            name="account"
-            label="账号"
-            rules={[{ required: true, message: '请输入或选择账号' }]}
-          >
-            <AutoComplete
-              options={options}
-              onSearch={handleSearch}
-              onSelect={onSelectUser}
-              placeholder="搜索账号/昵称，或直接输入账号"
-              notFoundContent={searching ? '搜索中…' : null}
-              allowClear
-              filterOption={false}
-            />
-          </Form.Item>
-          <Form.Item name="nick_name" label="昵称">
-            <Input placeholder="昵称（选中账号时自动填入，可修改）" allowClear />
-          </Form.Item>
-          <Form.Item name="role" label="角色" rules={[{ required: true, message: '请选择角色' }]}>
-            <Select options={ROLE_OPTIONS} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </Card>
   )
 }

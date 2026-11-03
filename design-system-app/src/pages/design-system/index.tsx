@@ -1,7 +1,7 @@
 import { createSignal, createMemo, For, Show } from "solid-js"
 import type { JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
-import { DS_REGISTRY, dsLoadState, type DsEntry } from "./data"
+import { DS_REGISTRY, dsLoadState, authorLabel, faceUrl, type DsEntry } from "./data"
 import DesignSystemDetail from "./detail"
 
 function SearchIcon(): JSX.Element {
@@ -56,6 +56,13 @@ export default function DesignSystemPage(): JSX.Element {
     navigate(`/design-system/${item.id}`)
   }
 
+  /** 作者（对象数组）→ 卡片简略显示：≤2 全量 nickName(account)；>2 前 2 +「等N人」（全量 hover tip） */
+  function authorBrief(meta: DsEntry["meta"]): string {
+    const all = (meta.authors ?? []).map(authorLabel).filter(Boolean)
+    if (!all.length) return ""
+    return all.length > 2 ? `${all.slice(0, 2).join("、")} 等${all.length}人` : all.join("、")
+  }
+
   return (
     <Show when={!params.id} fallback={<DesignSystemDetail id={params.id!} />}>
       <div class="flex-1 overflow-auto" style="background:#fff">
@@ -78,9 +85,16 @@ export default function DesignSystemPage(): JSX.Element {
           .ds-card .tag.brand { background: #0A59F7; color: #fff; }
           .ds-card .name { margin-top: 15px; font-weight: 500; color: #191919; font-size: 14px; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           .ds-card .meta { margin-top: 4px; display: flex; align-items: center; justify-content: space-between; color: #777777; font-size: 14px; line-height: 22px; }
-          .ds-card .author { display: flex; align-items: center; gap: 4px; min-width: 0; }
-          .ds-card .author img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+          .ds-card .author { display: flex; align-items: center; gap: 6px; min-width: 0; position: relative; }
+          .ds-card .author .avatars { display: flex; align-items: center; flex-shrink: 0; }
+          .ds-card .author .avatars img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; margin-right: -6px; border: 1px solid #fff; background: #E9EEF8; }
+          .ds-card .author .avatars img:last-child { margin-right: 0; }
+          .ds-card .author .names { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           .ds-card .usage { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+          .ds-card .author-tip { display: none; position: absolute; left: 0; bottom: calc(100% + 6px); background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.1); padding: 8px 12px; z-index: 10; flex-direction: column; gap: 6px; white-space: nowrap; }
+          .ds-card .author:hover .author-tip { display: flex; }
+          .ds-card .author-tip .row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; line-height: 18px; }
+          .ds-card .author-tip .row img { width: 18px; height: 18px; border-radius: 50%; background: #E9EEF8; }
           .dl-empty { margin-top: 80px; text-align: center; color: rgba(0,0,0,0.4); grid-column: 1 / -1; }
         `}</style>
 
@@ -116,8 +130,32 @@ export default function DesignSystemPage(): JSX.Element {
                   <div class="name" title={item.meta.name}>{item.meta.name}</div>
                   <div class="meta">
                     <span class="author">
-                      <img src="/design-systems/avatar-author.png" alt={item.meta.author ?? ""} />
-                      {item.meta.author ?? "Octo Agent"}
+                      <span class="avatars">
+                        <For each={(item.meta.authors ?? []).slice(0, 2)}>
+                          {(a) => (
+                            <img
+                              src={a.account ? faceUrl(a.account) : "/design-systems/avatar-author.png"}
+                              alt={authorLabel(a) || "Octo Agent"}
+                            />
+                          )}
+                        </For>
+                      </span>
+                      <span class="names">{authorBrief(item.meta) || "Octo Agent"}</span>
+                      <Show when={(item.meta.authors ?? []).length > 2}>
+                        <span class="author-tip">
+                          <For each={item.meta.authors}>
+                            {(a) => (
+                              <span class="row">
+                                <img
+                                  src={a.account ? faceUrl(a.account, 48) : "/design-systems/avatar-author.png"}
+                                  alt=""
+                                />
+                                {authorLabel(a)}
+                              </span>
+                            )}
+                          </For>
+                        </span>
+                      </Show>
                     </span>
                     <span class="usage">
                       <UsageIcon />

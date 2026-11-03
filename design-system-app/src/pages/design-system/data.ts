@@ -3,7 +3,8 @@ import { createSignal } from "solid-js"
 export type DsMeta = {
   name: string
   desc?: string
-  author?: string
+  /** 作者（/getAccount 完整值，驼峰：id/userID/account/nickName/dept） */
+  authors?: AuthorEntry[]
   usage?: number
   cover?: string
   /** 封面完整 URL（api1 的 cover_url） */
@@ -11,6 +12,16 @@ export type DsMeta = {
   /** design-system.json 完整 URL（api1 的 json_url，详情页数据源） */
   jsonUrl?: string
   default?: boolean
+}
+
+/** 作者条目（与 api1 的 author 数组元素同构，管理台 /getAccount 选人后原样存取） */
+export type AuthorEntry = {
+  id?: number | null
+  userID?: string | null
+  account: string
+  nickName?: string | null
+  /** 部门（最多 4 级数组） */
+  dept?: string[] | null
 }
 
 /** 卡片数据：仅 meta。详情内容由模版 iframe 用 jsonUrl 直接 fetch 后端 */
@@ -28,7 +39,7 @@ type ApiItem = {
   slug: string
   name: string
   desc?: string
-  author?: string
+  author?: AuthorEntry[]
   usage?: number
   cover?: string
   cover_url: string
@@ -37,6 +48,16 @@ type ApiItem = {
 }
 
 export type DsLoadState = "loading" | "ready" | "error"
+
+/** 用户头像服务（mock 3091 直连；face 入参 = account 去掉第一个字符） */
+export const FACE_API_BASE = "http://localhost:3091"
+export const faceUrl = (account: string, size = 32): string =>
+  `${FACE_API_BASE}/face/${account.slice(1)}/${size}`
+
+/** 作者显示标签（展示端）：昵称优先回落账号；管理台才显示 nickName(account) 完整格式 */
+export const authorLabel = (a: AuthorEntry): string => {
+  return (a.nickName || a.account || "").trim()
+}
 
 /**
  * 设计系统注册表 —— 纯 API 数据源（GET /aaa/api/design-systems）：
@@ -55,7 +76,7 @@ fetch("/aaa/api/design-systems")
         meta: {
           name: i.name,
           desc: i.desc,
-          author: i.author,
+          authors: Array.isArray(i.author) ? i.author : [],
           usage: i.usage,
           cover: i.cover,
           coverImg: i.cover_url,

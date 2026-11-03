@@ -3,17 +3,17 @@
  * 请求头与 lib-resource-ui 一致（octo-vs-token + AES 加密的 X-User-Data），
  * BASE 由 VITE_API_BASE 指定（同域 /aaa 反代，dev 经 vite proxy → lib-resource-service）。
  */
-import { API_BASE } from '../config'
+import { ACCOUNT_API_BASE, API_BASE } from '../config'
 import { ApiError } from './errors'
 import { getEncryptedUserData } from '../utils/auth'
 import type {
+  AuthorEntry,
   DesignSystemItem,
   DesignSystemListResp,
   DesignSystemMeta,
   OperationLog,
   OperationLogsParams,
   OperationLogsResp,
-  SearchUser,
   WhitelistAccount,
   WhitelistListResp,
 } from '../types'
@@ -51,22 +51,24 @@ export const api = {
   },
 
   /**
-   * 上传 design-system.json；meta 为卡片字段覆盖（name/author/usage/cover/default），
-   * coverFile 可选自定义封面（jpg/png/webp ≤2MB），不上传则走 JSON/默认封面。
+   * 上传 DESIGN.md（服务端解析为 design-system.json）；
+   * meta 为卡片字段覆盖（name/desc/default），authors 为作者数组（users 表自动补全昵称/部门），
+   * coverFile / iconFile 可选自定义封面 / 图标（≤2MB）。
    */
   create(
     file: File,
     meta: Partial<DesignSystemMeta>,
-    coverFile?: File | null,
+    options?: { coverFile?: File | null; iconFile?: File | null; authors?: AuthorEntry[] },
   ): Promise<DesignSystemItem> {
     const fd = new FormData()
     fd.append('file', file)
     if (meta.name !== undefined) fd.append('name', meta.name)
     if (meta.desc !== undefined) fd.append('desc', meta.desc ?? '')
-    if (meta.author !== undefined) fd.append('author', meta.author ?? '')
     if (meta.usage !== undefined) fd.append('usage', String(meta.usage))
     if (meta.default !== undefined) fd.append('default', String(meta.default))
-    if (coverFile) fd.append('cover_file', coverFile)
+    if (options?.authors) fd.append('author', JSON.stringify(options.authors))
+    if (options?.coverFile) fd.append('cover_file', options.coverFile)
+    if (options?.iconFile) fd.append('icon_file', options.iconFile)
     return request<DesignSystemItem>('/api/design-systems', { method: 'POST', body: fd })
   },
 
@@ -75,20 +77,25 @@ export const api = {
   },
 
   /**
-   * 编辑卡片 meta；改为 multipart：不上传 coverFile 则保留现有封面。
-   * 界面不提供调用量编辑入口（usage 仅作 API 修正通道，故此处不传 usage）。
+   * 编辑卡片 meta；multipart：不上传文件则保留现有封面/图标。
+   * authors 为作者数组（JSON 字符串提交，users 表自动补全）；调用量仅 API 修正通道，界面不提供入口。
    */
   patchMeta(
     slug: string,
     patch: Partial<DesignSystemMeta>,
-    coverFile?: File | null,
+    options?: { coverFile?: File | null; iconFile?: File | null; authors?: AuthorEntry[] },
   ): Promise<DesignSystemItem> {
     const fd = new FormData()
     if (patch.name !== undefined) fd.append('name', patch.name)
     if (patch.desc !== undefined) fd.append('desc', patch.desc ?? '')
-    if (patch.author !== undefined) fd.append('author', patch.author ?? '')
+    if (patch.author !== undefined) {
+      fd.append('author', JSON.stringify(patch.author))
+    } else if (options?.authors) {
+      fd.append('author', JSON.stringify(options.authors))
+    }
     if (patch.default !== undefined) fd.append('default', String(patch.default))
-    if (coverFile) fd.append('cover_file', coverFile)
+    if (options?.coverFile) fd.append('cover_file', options.coverFile)
+    if (options?.iconFile) fd.append('icon_file', options.iconFile)
     return request<DesignSystemItem>(`/api/design-systems/${slug}`, { method: 'PATCH', body: fd })
   },
 
@@ -163,16 +170,32 @@ export const api = {
     return request<{ detail: string }>(`/api/design-systems/whitelist/${id}`, { method: 'DELETE' })
   },
 
-  // ─────────────── 用户联想搜索（复用 lib-resource-service /api/users/search） ───────────────
+  // ─────────────── 人员搜索（/getAccount，直连 mock 服务） ───────────────
 
-  searchUsers(keyword: string, signal?: AbortSignal): Promise<{ items: SearchUser[] }> {
+  /**
+   * 人员联想搜索（GET /getAccount?keyword=，服务要求 uiplusToken 头）。
+   * 返回完整人员信息（id/userID/account/nickName/dept），与 AuthorEntry 同构——
+   * 作者与白名单新增共用此数据源，选中即得完整值。
+   */
+  searchAccounts: async (keyword: string, signal?: AbortSignal): Promise<AuthorEntry[]> => {
     const headers: Record<string, string> = {}
-    const token = localStorage.getItem('uiplusToken')
-    if (token) headers['uiplusToken'] = token
-    return request<{ items: SearchUser[] }>(
-      `/api/users/search?keyword=${encodeURIComponent(keyword)}`,
+    // mock 服务仅校验 header 非空；真实环境替换为登录 token（localStorage.uiplusToken）
+    headers['uiplusToken'] = localStorage.getItem('uiplusToken') || 'octo-demo'
+    const res = await fetch(
+      `${ACCOUNT_API_BASE}/getAccount?keyword=${encodeURIComponent(keyword)}`,
       { headers, signal },
     )
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
+    const body = (await res.json()) as {
+      success: boolean
+      errorCode?: number
+      content: Record<string, AuthorEntry[]> | null
+    }
+    if (!body.success || body.errorCode !== 0) {
+      throw new ApiError(body.errorCode ?? 500, `人员搜索失败（errorCode=${body.errorCode}）`)
+    }
+    // content 的 key 为 keyword 原样回显
+    return body.content?.[keyword] ?? []
   },
 }
 
