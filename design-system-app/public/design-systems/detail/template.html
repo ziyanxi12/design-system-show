@@ -80,6 +80,10 @@
     .sec-divider { height: 1px; background: var(--border-1); margin: 24px 0; }
     .sec-tools { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
     .overview-text { margin-top: 12px; font-size: 15px; line-height: 28px; color: var(--text-primary); max-width: 960px; white-space: pre-wrap; }
+    /* 设计原则（principles 列表的语义渲染：h3 粗体标题 + ol 序号列表） */
+    .ov-sec { margin-top: 32px; }
+    .ov-sec h3 { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: var(--text-primary); }
+    .ov-items { margin: 0; padding-left: 20px; font-size: 14px; line-height: 28px; color: var(--text-primary); max-width: 960px; }
 
     .sub-title { font-size: 14px; line-height: 22px; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
     .sub-title small { color: var(--text-3); font-size: 12px; }
@@ -492,17 +496,12 @@
 
     /* ---------- 概览 ---------- */
     function rOverview(box, ds) {
-      const ov = ds.overview || {}, m = ds.meta || {}, s = ds.source || {};
+      const ov = ds.overview || {};
+      // principles 语义上是一个列表：用 <ol><li> 渲染（浏览器默认粗体标题 + 序号列表），忠实还原数据结构
       box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
         '<div class="overview-text">' + esc(ov.text || "") + '</div>' +
-        (ov.principles && ov.principles.length ? '<div class="sub-block"><div class="sub-title">设计原则' + (ov.principlesSource ? '<small>' + esc(ov.principlesSource) + '</small>' : "") + '</div>' +
-          ov.principles.map(p => '<div class="props">' + esc(p) + '</div>').join("") + '</div>' : "") +
-        '<div class="sub-block">' +
-        '<div class="props">来源 Skill：' + esc(s.skill || "—") + ' · 适配器：' + esc(s.adapter || "—") +
-        (m.source_files != null ? ' · 源文件：' + esc(String(m.source_files)) + ' 个' + (m.source_size ? '（' + esc(String(m.source_size)) + '）' : "") : "") +
-        (m.source_entry ? ' · 入口：' + esc(m.source_entry) : "") + '</div>' +
-        (m.note ? '<div class="props">' + esc(m.note) + '</div>' : "") +
-        '</div>';
+        (ov.principles && ov.principles.length ? '<div class="ov-sec"><h3>设计原则</h3>' +
+          '<ol class="ov-items">' + ov.principles.map(p => '<li>' + esc(p) + '</li>').join("") + '</ol></div>' : "");
     }
 
     /* ---------- 颜色 ---------- */
