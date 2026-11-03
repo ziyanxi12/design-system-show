@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js"
+import { API_BASE } from "../../config"
 
 export type DsMeta = {
   name: string
@@ -60,14 +61,14 @@ export const authorLabel = (a: AuthorEntry): string => {
 }
 
 /**
- * 设计系统注册表 —— 纯 API 数据源（GET /aaa/api/design-systems）：
+ * 设计系统注册表 —— 纯 API 数据源（GET {API_BASE}/api/design-systems，API_BASE 由 .env 配置）：
  * 卡片来自 api1，详情用返回值里的 json_url 读 JSON 填充模板。
  * 无静态兜底：加载中显示提示，失败显示错误态。
  */
 const [registry, setRegistry] = createSignal<DsEntry[]>([])
 const [loadState, setLoadState] = createSignal<DsLoadState>("loading")
 
-fetch("/aaa/api/design-systems")
+fetch(`${API_BASE}/api/design-systems`)
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
   .then((data: { count: number; items: ApiItem[] }) => {
     setRegistry(

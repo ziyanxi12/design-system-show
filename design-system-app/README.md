@@ -6,8 +6,8 @@
 ## 页面与数据流
 
 ```
-/design-system            卡片列表：api1 → 封面（cover_url）/ 名称 / 作者 / 调用量 / 默认徽标，支持搜索
-/design-system/:id        详情页：外层壳 + 内嵌 Token Viewer 模板（iframe）
+/#/design-system              卡片列表：api1 → 封面（cover_url）/ 名称 / 作者 / 调用量 / 默认徽标，支持搜索
+/#/design-system/:id          详情页：外层壳 + 内嵌 Token Viewer 模板（iframe）
 ```
 
 详情页采用 iframe + postMessage 握手（见 `src/pages/design-system/detail.tsx`）：
@@ -41,8 +41,10 @@ npm run build    # vite build，产物 dist/
 ## 目录结构
 
 ```
+.env                                 VITE_API_BASE（API 前缀，dev 走 vite proxy /aaa → 8009）
 src/
-├── index.tsx                        路由（/ → /design-system 重定向）
+├── index.tsx                        路由（HashRouter；/ → /design-system 重定向）
+├── config.ts                        API_BASE 等环境配置
 ├── index.css
 └── pages/design-system/
     ├── index.tsx                    列表页（api1 数据 → 卡片 + 搜索 + 加载/错误/空态）

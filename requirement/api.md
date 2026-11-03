@@ -67,10 +67,10 @@
   `design-systems/icons/icon-default.svg`（品牌紫圆角 + DS 字样；`BUILTIN_ICONS` 列表结构，便于后续扩充内置图标集）；
   `file_size` 为上传的 MD 原件大小
 - `json_url` / `design_md_url`：**design-system.json（服务端解析产物，展示端数据源）与 DESIGN.md 原件**的可访问 URL；
-  两者均由 `PUBLIC_ORIGIN` 驱动（对齐 lib-resource `_to_public_url`）：`PUBLIC_ORIGIN` 非空 →
-  `{PUBLIC_ORIGIN}{ROOT_PATH}/static/...`（生产：真实域名 + `ROOT_PATH=/aaa`；本地开发：
-  `PUBLIC_ORIGIN=http://localhost:8009` 直接跨域访问，后端 CORS 已放开）。管理台文件行展示/下载的是
-  DESIGN.md（用户面主文件）；无 MD 的旧数据 `design_md_url` 为 null
+  当前部署约定为**相对路径**（`PUBLIC_ORIGIN` 置空 → `/static/...`）：本地 dev 走前端 vite 代理
+  （`/api`、`/static` 直通 8009，纯同源无 CORS 依赖）；生产由 nginx 同域配置 `/api` 与 `/static` 直通后端。
+  管理台文件行展示/下载的是 DESIGN.md（用户面主文件）；无 MD 的旧数据 `design_md_url` 为 null
+  （`PUBLIC_ORIGIN` 若非空仍会生成 `{PUBLIC_ORIGIN}{ROOT_PATH}/static/...` 绝对 URL，为 lib-resource 兼容保留）
 - `json_url`：展示端详情数据源；`created_by/updated_by` 为 account，`*_name` 为「昵称 account」显示名——直查 users 表解析，无记录时回落 account
 - 排序：`default` 置顶，其余按 slug 字典序
 
