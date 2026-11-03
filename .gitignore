@@ -5,3 +5,8 @@
 !/design-system-admin/
 !/requirement/
 !/README.md
+!/mock-api/
+
+# mock-api 运行产物不入库
+mock-api/.pids/
+mock-api/*.log
