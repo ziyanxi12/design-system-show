@@ -153,6 +153,9 @@ export default function DesignSystemFormModal({
   // 作者（多选，/getAccount 联想搜索，选中即得完整值）
   const [authors, setAuthors] = useState<AuthorEntry[]>([])
   const [authorOptions, setAuthorOptions] = useState<{ value: string; label: string }[]>([])
+  // 当前搜索词：options 只在有搜索词时才有内容 —— 点击/聚焦下拉恒为空白，
+  // 搜索结果只在输入后展示，选中/清空输入后立即清除（不残留上次结果）
+  const [authorKeyword, setAuthorKeyword] = useState('')
   const [authorSearching, setAuthorSearching] = useState(false)
   const authorMap = useRef<Map<string, AuthorEntry>>(new Map())
   const authorDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -177,6 +180,7 @@ export default function DesignSystemFormModal({
     setErrors([])
     setAuthors(isCreate ? [] : (item?.author ?? []))
     setAuthorOptions([])
+    setAuthorKeyword('')
     setCoverFile(null)
     if (coverBlobRef.current) {
       URL.revokeObjectURL(coverBlobRef.current)
@@ -216,16 +220,18 @@ export default function DesignSystemFormModal({
     }
   }
 
-  /** 作者联想搜索（/getAccount，300ms 防抖 + 超时取消；无匹配时允许手输外部账号） */
+  /** 作者联想搜索（/getAccount，300ms 防抖 + 超时取消；无匹配即无可选项，不支持手动输入） */
   const handleAuthorSearch = (value: string) => {
     if (authorDebounce.current) clearTimeout(authorDebounce.current)
     if (authorAbort.current) authorAbort.current.abort()
     const kw = value.trim()
     if (!kw) {
+      setAuthorKeyword('')
       setAuthorOptions([])
       setAuthorSearching(false)
       return
     }
+    setAuthorKeyword(kw)
     authorDebounce.current = setTimeout(async () => {
       const controller = new AbortController()
       authorAbort.current = controller
@@ -478,13 +484,22 @@ export default function DesignSystemFormModal({
           mode="multiple"
           labelInValue
           value={authors.map((a) => ({ value: a.account, label: authorLabel(a) }))}
-          options={authorOptions}
+          options={authorKeyword ? authorOptions : []}
           onSearch={handleAuthorSearch}
-          onChange={(vals) =>
+          onChange={(vals) => {
             handleAuthorChange((vals as { value: string }[]).map((v) => v.value))
-          }
+            // 选中/取消后立即清空搜索结果，不残留（输入框已被 antd 清空，等待下一次输入）
+            setAuthorKeyword('')
+            setAuthorOptions([])
+          }}
           placeholder="搜索账号/昵称添加作者"
-          notFoundContent={authorSearching ? '搜索中…' : '未找到匹配人员'}
+          notFoundContent={
+            authorSearching
+              ? '搜索中…'
+              : authorKeyword
+                ? `未找到「${authorKeyword}」相关成员`
+                : null
+          }
           filterOption={false}
           style={{ width: INPUT_WIDTH }}
           allowClear

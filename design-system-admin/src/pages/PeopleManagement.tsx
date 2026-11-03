@@ -33,6 +33,8 @@ export default function PeopleManagement() {
 
   // /getAccount 联想搜索（300ms 防抖 + 超时取消）
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
+  // 当前搜索词：options 只在有搜索词时才有内容（点击/聚焦下拉恒为空白，搜索结果不残留）
+  const [keyword, setKeyword] = useState('')
   const [searching, setSearching] = useState(false)
   const userMap = useRef<Map<string, AuthorEntry>>(new Map())
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -57,10 +59,12 @@ export default function PeopleManagement() {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     if (abortRef.current) abortRef.current.abort()
     if (!value.trim()) {
+      setKeyword('')
       setOptions([])
       setSearching(false)
       return
     }
+    setKeyword(value.trim())
     debounceTimer.current = setTimeout(async () => {
       const controller = new AbortController()
       abortRef.current = controller
@@ -202,11 +206,18 @@ export default function PeopleManagement() {
             <Select
               mode="multiple"
               value={pendingAccounts}
-              options={options}
+              options={keyword ? options : []}
               onSearch={handleSearch}
-              onChange={(vals) => setPendingAccounts(vals as string[])}
+              onChange={(vals) => {
+                setPendingAccounts(vals as string[])
+                // 选中/取消后清空搜索结果，不残留（输入框已被 antd 清空，等待下一次输入）
+                setKeyword('')
+                setOptions([])
+              }}
               placeholder="搜索并选择要添加的用户（可多选）"
-              notFoundContent={searching ? '搜索中…' : '未找到匹配人员'}
+              notFoundContent={
+                searching ? '搜索中…' : keyword ? `未找到「${keyword}」相关成员` : null
+              }
               filterOption={false}
               style={{ width: 300 }}
               allowClear
