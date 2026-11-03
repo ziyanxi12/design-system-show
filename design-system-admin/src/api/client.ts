@@ -178,9 +178,11 @@ export const api = {
    * 作者与白名单新增共用此数据源，选中即得完整值。
    */
   searchAccounts: async (keyword: string, signal?: AbortSignal): Promise<AuthorEntry[]> => {
-    const headers: Record<string, string> = {}
-    // mock 服务仅校验 header 非空；真实环境替换为登录 token（localStorage.uiplusToken）
-    headers['uiplusToken'] = localStorage.getItem('uiplusToken') || 'octo-demo'
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      // mock 服务仅校验 header 非空；真实环境替换为登录 token（localStorage.uiplusToken）
+      uiplusToken: localStorage.getItem('uiplusToken') || 'octo-demo',
+    }
     const res = await fetch(
       `${ACCOUNT_API_BASE}/getAccount?keyword=${encodeURIComponent(keyword)}`,
       { headers, signal },
@@ -188,11 +190,10 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
     const body = (await res.json()) as {
       success: boolean
-      errorCode?: number
       content: Record<string, AuthorEntry[]> | null
     }
-    if (!body.success || body.errorCode !== 0) {
-      throw new ApiError(body.errorCode ?? 500, `人员搜索失败（errorCode=${body.errorCode}）`)
+    if (!body.success) {
+      throw new ApiError(500, '人员搜索失败')
     }
     // content 的 key 为 keyword 原样回显
     return body.content?.[keyword] ?? []

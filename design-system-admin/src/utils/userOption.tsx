@@ -10,7 +10,7 @@ const DEPT_COL_WIDTH = 110
 
 export function userOption(u: AuthorEntry): { value: string; label: React.ReactNode } {
   const dept = Array.isArray(u.dept) ? u.dept : []
-  const deptText = [dept[0], dept[2]].filter(Boolean).join(' ')
+  const deptText = [dept[3], dept[1] ? `【${dept[1]}】` : ''].filter(Boolean).join('')
   return {
     value: u.account,
     label: (
