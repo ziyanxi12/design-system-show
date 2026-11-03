@@ -37,27 +37,7 @@
 
     .app { display: flex; flex-direction: column; height: 100vh; }
 
-    /* ---------- 头部（与 demo .dsd-head 对齐） ---------- */
-    .head {
-      background: #fff; padding: 22px 24px 0 40px; height: 134px; flex-shrink: 0;
-    }
-    .head .crumb { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); height: 24px; font-size: 14px; margin-left: -4px; }
-    .head .crumb .back { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--text-secondary); cursor: pointer; }
-    .head .crumb .back:hover { background: var(--fill-1); }
-    .head .crumb .cur { color: var(--text-primary); }
-    .head .crumb span.sep { color: var(--text-3); }
-    .head .ds-title { margin-top: 18px; display: flex; align-items: center; gap: 12px; }
-    .head .ds-logo { width: 42px; height: 42px; border-radius: 10px; background: var(--brand); display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
-    .head .ds-logo svg { width: 22px; height: 22px; }
-    .head .ds-name { font-size: 16px; line-height: 24px; font-weight: 500; color: var(--text-primary); }
-    .head .ds-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; color: var(--text-secondary); font-size: 14px; line-height: 20px; }
-    .head .ds-meta .bar { width: 1px; height: 12px; background: var(--border-1); }
-    .head .ds-meta .avatar { width: 16px; height: 16px; border-radius: 50%; background: var(--brand); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; flex-shrink: 0; }
-    .head .ds-meta .faces { display: inline-flex; align-items: center; }
-    .head .ds-meta .faces .face { width: 18px; height: 18px; border-radius: 50%; margin-right: -6px; border: 1px solid #fff; background: #E9EEF8; }
-    .head .ds-meta .faces .face:last-child { margin-right: 0; }
-    .head .ds-meta .usage-ic { width: 14px; height: 14px; color: var(--text-secondary); }
-    .head .ds-meta .usage-ic svg { width: 14px; height: 14px; }
+    /* 头部（面包屑/标题/作者/调用量）由展示端外层壳渲染（api1 数据），本模板仅负责导航 + token 数据 */
 
     /* ---------- 主体（与 demo .dsd-body 对齐） ---------- */
     .body { flex: 1; min-height: 0; display: flex; gap: 10px; padding: 24px 24px 0; }
@@ -1013,42 +993,13 @@
     }
 
     /* ================= 页面组装 ================= */
-    const DS_LOGO = ((window.ICONS || {})["ds-logo"] || "");
-    const USAGE_ICON = '<svg viewBox="0 0 14 14" fill="none"><path d="M10.9375 6.98558C10.9375 8.38936 10.1975 9.62093 9.08492 10.3142L9.08456 11.7112C9.08456 11.969 8.87562 12.1779 8.61789 12.1779L5.38211 12.1779C5.12438 12.1779 4.91544 11.969 4.91544 11.7112L4.91508 10.3142C3.80252 9.62093 3.0625 8.38936 3.0625 6.98558C3.0625 4.81892 4.82538 3.0625 7 3.0625C9.17462 3.0625 10.9375 4.81892 10.9375 6.98558Z" fill-rule="evenodd" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.875"/><line x1="4.91552734" x2="9.08464432" y1="13.4472656" y2="13.4472656" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.875"/><path d="M6.99984 0.729492L6.99984 1.45866M11.434 2.56618L10.9184 3.08178M13.2707 7.00033L12.5415 7.00033M0.729004 7.00033L1.45817 7.00033M2.56569 2.56618L3.08129 3.08178" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.875"/></svg>';
-    const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 10 10" fill="none"><path d="M6 1L2 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const CHEV_ICON = '<span class="chev"><svg viewBox="0 0 14 14" fill="none"><path d="M3.5 5L7 8.5L10.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
 
     function buildPage(ds, meta, mapping) {
       const app = document.getElementById("app");
       const compItems = (ds.components && ds.components.items) || [];
-      const name = (meta && meta.name) || ds.name;
-      const dm = ds.meta || {};
-      // 作者：优先 postMessage 的 authors 对象数组（nickName(account) 格式），回落旧字符串字段
-      var FACE_API_BASE = "http://localhost:3091";
-      var faceUrl = function (account, size) { return FACE_API_BASE + "/face/" + String(account).slice(1) + "/" + (size || 32); };
-      var authorsArr = (meta && meta.authors) || [];
-      var authorLabel = function (a) {
-        a = a || {};
-        // 展示端只显示昵称（回落账号）；管理台才显示 nickName(account) 完整格式
-        return String(a.nickName || a.account || "").trim();
-      };
-      var authorHtml = authorsArr.map(function (a) {
-        if (!a || !a.account) return "";
-        return '<img class="face" src="' + esc(faceUrl(a.account)) + '" alt="' + esc(authorLabel(a)) + '" />';
-      }).join("");
-      var authorNames = authorsArr.map(authorLabel).filter(Boolean).join("、");
-      var author = authorNames || (meta && meta.author) || dm.author || "";
-      var authorBlock = authorHtml
-        ? '<span class="faces">' + authorHtml + '</span><span>' + esc(author) + '</span>'
-        : '<span class="avatar">' + esc((author || 'O').charAt(0)) + '</span><span>' + esc(author || 'Octo Agent') + '</span>';
-      var usage = meta && meta.usage != null ? meta.usage : (dm.usage != null ? dm.usage : 0);
-
+      // 头部（面包屑/标题/作者/调用量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据
       app.innerHTML =
-        '<div class="head">' +
-          '<div class="crumb"><span class="back">' + BACK_ICON + '</span><span class="cur">设计系统</span><span class="sep">/</span><span class="cur">' + esc(name) + '</span></div>' +
-          '<div class="ds-title"><span class="ds-logo">' + DS_LOGO + '</span><div><div class="ds-name">' + esc(name) + '</div>' +
-          '<div class="ds-meta">' + authorBlock + '<span class="bar"></span><span class="usage-ic">' + USAGE_ICON + '</span><span>调用量 ' + usage + '</span></div></div></div>' +
-        '</div>' +
         '<div class="body">' +
           '<nav class="nav" id="nav">' + SECTIONS.map(s => {
             const ic = '<span class="nav-ic">' + ((window.ICONS || {})[s.icon] || "") + '</span>';
@@ -1124,20 +1075,7 @@
       if (SECTIONS.length) setNav(SECTIONS[0].key, null);
 
       /* 返回：面包屑箭头 + "设计系统"文字 */
-      function goBack() {
-        if (window.parent !== window) {
-          window.parent.postMessage({ type: "ds-back" }, "*");
-        } else if (history.length > 1) {
-          history.back();
-        }
-      }
-      const back = document.querySelector(".head .crumb .back");
-      if (back) back.addEventListener("click", goBack);
-      const crumbCur = document.querySelector(".head .crumb .cur");
-      if (crumbCur) {
-        crumbCur.style.cursor = "pointer";
-        crumbCur.addEventListener("click", goBack);
-      }
+      // 返回已由展示端外层壳的面包屑处理（navigate），模板内不再有头部/返回逻辑
     }
 
     /* ================= 数据引导 ================= */
