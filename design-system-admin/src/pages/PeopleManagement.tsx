@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   App,
+  AutoComplete,
   Button,
   Card,
   Popconfirm,
@@ -14,6 +15,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { api } from '../api/client'
 import type { AuthorEntry, WhitelistAccount } from '../types'
+import { userOption } from '../utils/userOption'
 import { useRole } from '../components/AuthGuard'
 
 /** 角色下拉选项（表格行内与新增弹窗共用；Tag 去外边距以适配 borderless 下拉） */
@@ -32,16 +34,18 @@ export default function PeopleManagement() {
   const [loading, setLoading] = useState(false)
 
   // /getAccount 联想搜索（300ms 防抖 + 超时取消）
-  const [options, setOptions] = useState<{ value: string; label: string }[]>([])
+  const [options, setOptions] = useState<{ value: string; label: React.ReactNode }[]>([])
   // 当前搜索词：options 只在有搜索词时才有内容（点击/聚焦下拉恒为空白，搜索结果不残留）
   const [keyword, setKeyword] = useState('')
   const [searching, setSearching] = useState(false)
   const userMap = useRef<Map<string, AuthorEntry>>(new Map())
+  const pendingContainerRef = useRef<HTMLDivElement>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // 批量添加：多选攒着，点「增加」批量创建
-  const [pendingAccounts, setPendingAccounts] = useState<string[]>([])
+  // 批量添加：输入框选中攒着（完整人员值，标签展示可删除），点「增加」批量创建
+  const [pending, setPending] = useState<AuthorEntry[]>([])
+  const [pendingInput, setPendingInput] = useState('')
   const [adding, setAdding] = useState(false)
 
   const reload = () => {
@@ -74,12 +78,7 @@ export default function PeopleManagement() {
         const items = await api.searchAccounts(value.trim(), controller.signal)
         // 累积合并（不清空）：多轮搜索选人后，早前选中项的昵称等信息仍可查
         items.forEach((u) => userMap.current.set(u.account, u))
-        setOptions(
-          items.map((u) => ({
-            value: u.account,
-            label: `${u.nickName || u.account} · ${u.account}`,
-          })),
-        )
+        setOptions(items.map(userOption))
       } catch {
         setOptions([])
       } finally {
@@ -89,18 +88,33 @@ export default function PeopleManagement() {
     }, 300)
   }
 
+  /** 输入框选中 → 攒入待添加列表（完整值），清空输入框继续输入下一个 */
+  const addPending = (account: string) => {
+    if (!pending.some((p) => p.account === account)) {
+      const u = userMap.current.get(account)
+      if (u) setPending((prev) => [...prev, u])
+    }
+    setPendingInput('')
+    setKeyword('')
+    setOptions([])
+  }
+
+  /** 标签 × / Backspace（空输入时）移除待添加 */
+  const removePending = (account: string) => {
+    setPending((prev) => prev.filter((p) => p.account !== account))
+  }
+
   /** 批量添加：逐个创建（角色默认 admin，行内下拉可改），已存在计入跳过；完成后清空选择并刷新 */
   const handleBatchAdd = async () => {
-    if (!pendingAccounts.length) return
+    if (!pending.length) return
     setAdding(true)
     let added = 0
     let skipped = 0
-    for (const account of pendingAccounts) {
-      const u = userMap.current.get(account)
+    for (const p of pending) {
       try {
         await api.createWhitelist({
-          account,
-          nick_name: u?.nickName ?? '',
+          account: p.account,
+          nick_name: p.nickName ?? '',
           role: 'admin',
         })
         added++
@@ -110,7 +124,7 @@ export default function PeopleManagement() {
       }
     }
     message.success(`添加完成：新增 ${added} 个${skipped > 0 ? `，跳过 ${skipped} 个（已存在）` : ''}`)
-    setPendingAccounts([])
+    setPending([])
     setAdding(false)
     if (added > 0) reload()
   }
@@ -202,36 +216,86 @@ export default function PeopleManagement() {
       title={`人员管理（共 ${list.length} 个）`}
       extra={
         isSuper ? (
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <Select
-              mode="multiple"
-              value={pendingAccounts}
-              options={keyword ? options : []}
-              onSearch={handleSearch}
-              onChange={(vals) => {
-                setPendingAccounts(vals as string[])
-                // 选中/取消后清空搜索结果，不残留（输入框已被 antd 清空，等待下一次输入）
-                setKeyword('')
-                setOptions([])
-              }}
-              placeholder="搜索并选择要添加的用户（可多选）"
-              notFoundContent={
-                searching ? '搜索中…' : keyword ? `未找到「${keyword}」相关成员` : null
-              }
-              filterOption={false}
-              style={{ width: 300 }}
-              allowClear
-              disabled={adding}
-            />
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              loading={adding}
-              disabled={!pendingAccounts.length}
-              onClick={handleBatchAdd}
-            >
-              增加
-            </Button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {/* 模拟输入框容器：已选标签 + borderless AutoComplete 融为一体（标签在输入框内）；
+                  position:relative 锚定下拉（getPopupContainer 指向此容器，下拉宽度恒等于容器宽度） */}
+              <div
+                ref={pendingContainerRef}
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: 4,
+                  width: 300,
+                  minHeight: 32,
+                  padding: '3px 8px',
+                  border: '1px solid #d9d9d9',
+                  borderRadius: 6,
+                  cursor: 'text',
+                  background: adding ? '#f5f5f5' : '#fff',
+                  position: 'relative',
+                }}
+                onClick={() => {
+                  document.querySelector<HTMLInputElement>('.ds-pending-input .ant-select-selection-search-input')?.focus()
+                }}
+              >
+                {pending.map((p) => (
+                  <Tag
+                    key={p.account}
+                    closable
+                    onClose={(e) => {
+                      e.preventDefault()
+                      removePending(p.account)
+                    }}
+                  >
+                    {p.nickName || p.account}({p.account})
+                  </Tag>
+                ))}
+                <div className="ds-pending-input" style={{ flex: 1, minWidth: 60 }}>
+                  <AutoComplete
+                    variant="borderless"
+                    value={pendingInput}
+                    options={options.map((o) => ({
+                      ...o,
+                      disabled: pending.some((p) => p.account === o.value),
+                    }))}
+                    onSearch={(v) => {
+                      setPendingInput(v)
+                      handleSearch(v)
+                    }}
+                    onSelect={(val) => addPending(val as string)}
+                    onKeyDown={(e) => {
+                      // 空输入时 Backspace 删除最后一个待添加（对齐多选输入框的键盘体验）
+                      if (e.key === 'Backspace' && !pendingInput && pending.length) {
+                        e.preventDefault()
+                        setPending((prev) => prev.slice(0, -1))
+                      }
+                    }}
+                    placeholder={pending.length === 0 ? '搜索并添加用户（可连续多选）' : ''}
+                    notFoundContent={
+                      searching ? '搜索中…' : keyword ? `未找到「${keyword}」相关成员` : null
+                    }
+                    filterOption={false}
+                    dropdownMatchSelectWidth={false}
+                    getPopupContainer={() => pendingContainerRef.current ?? document.body}
+                    dropdownStyle={{ width: '100%', position: 'absolute', top: '100%', left: 0, marginTop: 4 }}
+                    style={{ width: '100%', padding: 0 }}
+                    disabled={adding}
+                  />
+                </div>
+              </div>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                loading={adding}
+                disabled={!pending.length}
+                onClick={handleBatchAdd}
+                style={{ flexShrink: 0 }}
+              >
+                增加
+              </Button>
+            </div>
           </div>
         ) : undefined
       }

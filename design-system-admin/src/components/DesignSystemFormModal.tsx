@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   App,
+  AutoComplete,
   Button,
   Form,
   Input,
   Modal,
-  Select,
   Switch,
+  Tag,
   Typography,
   Upload,
 } from 'antd'
@@ -15,6 +16,7 @@ import dayjs from 'dayjs'
 import { api, ApiError } from '../api/client'
 import { MAX_JSON_BYTES } from '../api/validate'
 import { authorLabel, type AuthorEntry, type DesignSystemItem, type DesignSystemMeta } from '../types'
+import { userOption } from '../utils/userOption'
 
 /**
  * 三态弹窗：新增 / 编辑 / 查看设计系统
@@ -150,14 +152,16 @@ export default function DesignSystemFormModal({
   const [mdFile, setMdFile] = useState<File | null>(null)
   const [errors, setErrors] = useState<string[]>([])
 
-  // 作者（多选，/getAccount 联想搜索，选中即得完整值）
+  // 作者（AutoComplete 输入框 + /getAccount 联想，选中即得完整值；已选以可删除标签展示）
   const [authors, setAuthors] = useState<AuthorEntry[]>([])
-  const [authorOptions, setAuthorOptions] = useState<{ value: string; label: string }[]>([])
+  const [authorOptions, setAuthorOptions] = useState<{ value: string; label: React.ReactNode }[]>([])
   // 当前搜索词：options 只在有搜索词时才有内容 —— 点击/聚焦下拉恒为空白，
   // 搜索结果只在输入后展示，选中/清空输入后立即清除（不残留上次结果）
   const [authorKeyword, setAuthorKeyword] = useState('')
+  const [authorInput, setAuthorInput] = useState('')
   const [authorSearching, setAuthorSearching] = useState(false)
   const authorMap = useRef<Map<string, AuthorEntry>>(new Map())
+  const authorContainerRef = useRef<HTMLDivElement>(null)
   const authorDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const authorAbort = useRef<AbortController | null>(null)
 
@@ -181,6 +185,7 @@ export default function DesignSystemFormModal({
     setAuthors(isCreate ? [] : (item?.author ?? []))
     setAuthorOptions([])
     setAuthorKeyword('')
+    setAuthorInput('')
     setCoverFile(null)
     if (coverBlobRef.current) {
       URL.revokeObjectURL(coverBlobRef.current)
@@ -237,12 +242,12 @@ export default function DesignSystemFormModal({
       authorAbort.current = controller
       const timeoutId = setTimeout(() => controller.abort(), 6000)
       setAuthorSearching(true)
-      let opts: { value: string; label: string }[] = []
+      let opts: { value: string; label: React.ReactNode }[] = []
       try {
         const items = await api.searchAccounts(kw, controller.signal)
         // 累积合并（不清空）：多轮搜索下已选作者的信息仍可查
         items.forEach((u) => authorMap.current.set(u.account, u))
-        opts = items.map((u) => ({ value: u.account, label: authorLabel(u) }))
+        opts = items.map(userOption)
       } catch {
         opts = []
       } finally {
@@ -254,14 +259,20 @@ export default function DesignSystemFormModal({
     }, 300)
   }
 
-  /** 选中/取消作者：新选项从搜索映射取完整值（id/userID/account/nickName/dept），已选项保持原值 */
-  const handleAuthorChange = (accounts: string[]) => {
-    setAuthors(
-      accounts.map((account) => {
-        const u = authorMap.current.get(account)
-        return u ?? authors.find((a) => a.account === account) ?? { account, nickName: '' }
-      }),
-    )
+  /** 输入框选中 → 从搜索映射取完整值追加作者，清空输入框继续输入下一个（已选跳过） */
+  const addAuthor = (account: string) => {
+    if (!authors.some((a) => a.account === account)) {
+      const u = authorMap.current.get(account)
+      if (u) setAuthors((prev) => [...prev, u])
+    }
+    setAuthorInput('')
+    setAuthorKeyword('')
+    setAuthorOptions([])
+  }
+
+  /** 标签 × / Backspace（空输入时）移除作者 */
+  const removeAuthor = (account: string) => {
+    setAuthors((prev) => prev.filter((a) => a.account !== account))
   }
 
   /** 封面选择（校验 jpg/png/webp ≤2MB，本地 blob 预览） */
@@ -479,31 +490,78 @@ export default function DesignSystemFormModal({
       )
     }
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <Select
-          mode="multiple"
-          labelInValue
-          value={authors.map((a) => ({ value: a.account, label: authorLabel(a) }))}
-          options={authorKeyword ? authorOptions : []}
-          onSearch={handleAuthorSearch}
-          onChange={(vals) => {
-            handleAuthorChange((vals as { value: string }[]).map((v) => v.value))
-            // 选中/取消后立即清空搜索结果，不残留（输入框已被 antd 清空，等待下一次输入）
-            setAuthorKeyword('')
-            setAuthorOptions([])
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {/* 模拟输入框容器：已选标签 + borderless AutoComplete 融为一体（标签在输入框内）；
+            position:relative 锚定下拉（getPopupContainer 指向此容器，下拉宽度恒等于容器宽度） */}
+        <div
+          ref={authorContainerRef}
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 3,
+            width: INPUT_WIDTH,
+            minHeight: 32,
+            padding: '2px 6px',
+            border: '1px solid #d9d9d9',
+            borderRadius: 6,
+            cursor: 'text',
+            background: '#fff',
+            position: 'relative',
           }}
-          placeholder="搜索账号/昵称添加作者"
-          notFoundContent={
-            authorSearching
-              ? '搜索中…'
-              : authorKeyword
-                ? `未找到「${authorKeyword}」相关成员`
-                : null
-          }
-          filterOption={false}
-          style={{ width: INPUT_WIDTH }}
-          allowClear
-        />
+          onClick={() => {
+            document.querySelector<HTMLInputElement>('.ds-author-input .ant-select-selection-search-input')?.focus()
+          }}
+        >
+          {authors.map((a) => (
+            <Tag
+              key={a.account}
+              closable
+              onClose={(e) => {
+                e.preventDefault()
+                removeAuthor(a.account)
+              }}
+            >
+              {authorLabel(a)}
+            </Tag>
+          ))}
+          {/* borderless AutoComplete：打字弹下拉建议；无搜索词不弹（不残留）；已选置灰防重复 */}
+          <div className="ds-author-input" style={{ flex: 1, minWidth: 60 }}>
+            <AutoComplete
+              variant="borderless"
+              value={authorInput}
+              options={authorOptions.map((o) => ({
+                ...o,
+                disabled: authors.some((a) => a.account === o.value),
+              }))}
+              onSearch={(v) => {
+                setAuthorInput(v)
+                handleAuthorSearch(v)
+              }}
+              onSelect={(val) => addAuthor(val as string)}
+              onKeyDown={(e) => {
+                // 空输入时 Backspace 删除最后一个作者（对齐多选输入框的键盘体验）
+                if (e.key === 'Backspace' && !authorInput && authors.length) {
+                  e.preventDefault()
+                  setAuthors((prev) => prev.slice(0, -1))
+                }
+              }}
+              placeholder={authors.length === 0 ? '搜索账号/昵称添加作者' : ''}
+              notFoundContent={
+                authorSearching
+                  ? '搜索中…'
+                  : authorKeyword
+                    ? `未找到「${authorKeyword}」相关成员`
+                    : null
+              }
+              filterOption={false}
+              getPopupContainer={() => authorContainerRef.current ?? document.body}
+              dropdownMatchSelectWidth={false}
+              dropdownStyle={{ width: '100%', position: 'absolute', top: '100%', left: 0, marginTop: 4 }}
+              style={{ width: '100%', padding: 0 }}
+            />
+          </div>
+        </div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           选中即带出完整人员信息（昵称/部门）
         </Typography.Text>

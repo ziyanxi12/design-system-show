@@ -106,7 +106,7 @@ export default function DesignSystemDetail(props: { id: string }): JSX.Element {
               </Show>
               <iframe
                 ref={iframe}
-                src="/design-systems/detail/template.html"
+                src="./design-systems/detail/template.html"
                 title="设计系统详情"
                 style="width:100%;height:100%;border:0;display:block"
                 onLoad={() => setLoaded(true)}
