@@ -6,7 +6,12 @@
 !/requirement/
 !/README.md
 !/mock-api/
+!/test-zip/
 
 # mock-api 运行产物不入库
 mock-api/.pids/
 mock-api/*.log
+
+# test-zip 生成产物不入库（make_test_zips.py 可复现全部测试包）
+test-zip/*.zip
+test-zip/wrong-ext-design.md

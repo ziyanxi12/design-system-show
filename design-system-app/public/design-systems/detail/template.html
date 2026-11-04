@@ -997,6 +997,12 @@
     function buildPage(ds, meta, mapping) {
       const app = document.getElementById("app");
       const compItems = (ds.components && ds.components.items) || [];
+      /* 数据驱动扩展区块：zip 包（octo-design-zip/1）带来 components/patterns 数据时追加
+         导航与区块卡片；存量 MD 上传数据无这些键，行为零变化 */
+      if (compItems.length && !SECTIONS.some(s => s.key === "components"))
+        SECTIONS.push({ key: "components", label: "组件", icon: "sec-component" });
+      if (ds.patterns && !SECTIONS.some(s => s.key === "patterns"))
+        SECTIONS.push({ key: "patterns", label: "布局 Pattern", icon: "sec-component" });
       // 头部（面包屑/标题/作者/调用量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据
       app.innerHTML =
         '<div class="body">' +

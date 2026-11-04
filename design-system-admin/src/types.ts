@@ -26,6 +26,8 @@ export function authorLabel(a: AuthorEntry): string {
 
 export interface DesignSystemItem extends DesignSystemMeta {
   author: AuthorEntry[]
+  /** DESIGN.md frontmatter 的 id 原样保留（不唯一，允许重复；展示/搜索/追溯） */
+  source_slug?: string | null
   cover_url: string
   /** 图标相对路径（null=未自定义，走内置默认图标） */
   icon?: string | null
@@ -33,13 +35,18 @@ export interface DesignSystemItem extends DesignSystemMeta {
   icon_url: string
   /** design-system.json 可直接 fetch 的地址 */
   json_url: string
-  /** DESIGN.md 原件可下载地址（旧数据可能为 null） */
+  /** DESIGN.md 原件可下载地址（zip 内提取件；旧数据可能为 null） */
   design_md_url?: string | null
+  /** zip 原件可下载地址（source.zip） */
+  zip_url?: string | null
+  /** skill-design.zip 附件完整下载链接（zip 内未提供则 null） */
+  skill_zip_url?: string | null
   /** 创建人 / 最后编辑人（account）及显示名（"昵称 account"，无用户记录时回落 account） */
   created_by: string
   updated_by: string
   created_by_name: string
   updated_by_name: string
+  /** 上传 zip 原件大小（旧数据为 MD 大小） */
   file_size?: number
   updated_at: string
 }

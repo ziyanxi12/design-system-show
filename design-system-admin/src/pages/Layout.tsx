@@ -1,6 +1,7 @@
 import { Button, Layout as AntLayout, Menu } from 'antd'
 import {
   BarChartOutlined,
+  FileZipOutlined,
   LogoutOutlined,
   TableOutlined,
   TeamOutlined,
@@ -11,6 +12,7 @@ import { getUserInfo, redirectToLogout } from '../utils/auth'
 
 const MENU_ITEMS = [
   { key: '/list', icon: <TableOutlined />, label: '设计系统管理' },
+  { key: '/parse', icon: <FileZipOutlined />, label: 'Zip 解析' },
   { key: '/people', icon: <TeamOutlined />, label: '人员管理' },
   { key: '/logs', icon: <TableOutlined />, label: '操作记录' },
   { key: '/stats', icon: <BarChartOutlined />, label: '数据统计' },

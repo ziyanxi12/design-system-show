@@ -7,6 +7,7 @@ import DesignSystemList from './pages/DesignSystemList'
 import PeopleManagement from './pages/PeopleManagement'
 import OperationLogs from './pages/OperationLogs'
 import StatsPage from './pages/StatsPage'
+import ZipParsePage from './pages/ZipParsePage'
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
             >
               <Route path="/" element={<Navigate to="/list" replace />} />
               <Route path="/list" element={<DesignSystemList />} />
+              <Route path="/parse" element={<ZipParsePage />} />
               <Route path="/people" element={<PeopleManagement />} />
               <Route path="/logs" element={<OperationLogs />} />
               <Route path="/stats" element={<StatsPage />} />

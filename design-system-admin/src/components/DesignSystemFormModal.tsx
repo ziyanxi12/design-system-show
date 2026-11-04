@@ -13,19 +13,21 @@ import {
 } from 'antd'
 import { DownloadOutlined, InboxOutlined, PictureOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { api, ApiError } from '../api/client'
-import { MAX_JSON_BYTES } from '../api/validate'
+import { api, ApiError, MAX_ZIP_BYTES } from '../api/client'
 import { authorLabel, type AuthorEntry, type DesignSystemItem, type DesignSystemMeta } from '../types'
 import { userOption } from '../utils/userOption'
 
 /**
  * 三态弹窗：新增 / 编辑 / 查看设计系统
- * - create：DESIGN.md（紧凑拖拽，服务端解析）+ 作者多选（用户联想）+ 封面/图标（按钮选图）+ 名称/描述/默认
- * - edit：当前文件下载 + 可选替换 DESIGN.md + 当前封面/图标 + 可选换新 + 名称/作者/描述/默认
+ * - create：zip 包（紧凑拖拽，服务端解压解析）+ 作者多选（用户联想）+ 封面/图标（按钮选图）+ 名称/描述/默认
+ * - edit：当前文件下载 + 可选替换 zip 包 + 当前封面/图标 + 可选换新 + 名称/作者/描述/默认
  * - view：只读展示 + 文件下载 + 封面/图标缩略图 + 查看完整 JSON
  *
+ * 上传物为 zip 包（octo-design-zip/1：DESIGN.md + assets + skill-design.zip）；
+ * >20MB 自动分片（client.ts uploadZipFlow，控制台打印分片日志）。
+ *
  * 编辑提交流程：
- *   1. 选了新 DESIGN.md → PUT /{slug}/json（服务端校验 id 一致；name 跟 MD，封面/图标/作者保留）
+ *   1. 选了新 zip 包 → PUT /{slug}/json（内容替换；name 跟 MD，封面/图标/作者/调用量保留）
  *   2. 再 PATCH /{slug} 提交表单变化 + 文件；无变化则跳过（避免脏操作日志）
  */
 export type FormMode = 'create' | 'edit' | 'view'
@@ -42,7 +44,7 @@ const fmtSize = (n?: number) =>
 const MAX_IMG_BYTES = 2 * 1024 * 1024
 const ALLOWED_COVER_EXTS = ['jpg', 'jpeg', 'png', 'webp']
 const ALLOWED_ICON_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'svg']
-const MD_EXTS = ['md', 'markdown']
+const ZIP_EXTS = ['zip']
 
 function validateImageFile(file: File, exts: string[], label: string): string | null {
   const ext = (file.name.split('.').pop() || '').toLowerCase()
@@ -148,8 +150,8 @@ export default function DesignSystemFormModal({
   const isCreate = mode === 'create'
   const isEdit = mode === 'edit'
 
-  // DESIGN.md 文件（create/edit 共用；内容解析在后端，前端只做扩展名/大小预检）
-  const [mdFile, setMdFile] = useState<File | null>(null)
+  // zip 包文件（create/edit 共用；内容解析在后端，前端只做扩展名/大小预检）
+  const [zipFile, setZipFile] = useState<File | null>(null)
   const [errors, setErrors] = useState<string[]>([])
 
   // 作者（AutoComplete 输入框 + /getAccount 联想，选中即得完整值；已选以可删除标签展示）
@@ -180,7 +182,7 @@ export default function DesignSystemFormModal({
   // 打开时初始化（释放上次会话的 blob URL）
   useEffect(() => {
     if (!open) return
-    setMdFile(null)
+    setZipFile(null)
     setErrors([])
     setAuthors(isCreate ? [] : (item?.author ?? []))
     setAuthorOptions([])
@@ -211,17 +213,17 @@ export default function DesignSystemFormModal({
     }
   }, [open, mode, item, form, isCreate])
 
-  /** DESIGN.md 预检（扩展名/大小）；内容解析与结构校验由后端完成 */
-  const handleMdFile = (f: File) => {
-    setMdFile(f)
+  /** zip 包预检（扩展名/大小）；内容解析与结构校验由后端完成 */
+  const handleZipFile = (f: File) => {
+    setZipFile(f)
     setErrors([])
     const ext = (f.name.split('.').pop() || '').toLowerCase()
-    if (!MD_EXTS.includes(ext)) {
-      setErrors(['仅支持上传 .md 文件（DESIGN.md，octo-design-md/1 格式）'])
+    if (!ZIP_EXTS.includes(ext)) {
+      setErrors(['仅支持上传 zip 包（DESIGN.md + assets + skill-design.zip）'])
       return
     }
-    if (f.size > MAX_JSON_BYTES) {
-      setErrors([`文件 ${fmtSize(f.size)} 超过 10MB 上限`])
+    if (f.size > MAX_ZIP_BYTES) {
+      setErrors([`文件 ${fmtSize(f.size)} 超过 200MB 上限`])
     }
   }
 
@@ -303,19 +305,19 @@ export default function DesignSystemFormModal({
     setIconBlobUrl(url)
   }
 
-  /** 提交：edit 先 PUT（如有新 MD）再 PATCH（如有变化；作者数组仅变化时提交） */
+  /** 提交：edit 先 PUT（如有新 zip 包）再 PATCH（如有变化；作者数组仅变化时提交） */
   const submit = async () => {
-    if (isCreate && !mdFile) {
-      message.warning('请先选择 DESIGN.md 文件')
+    if (isCreate && !zipFile) {
+      message.warning('请先选择 zip 包文件')
       return
     }
     setSubmitting(true)
     try {
       // validateFields 需在 try 内：校验失败时 antd reject 的是 {errorFields} 对象（非 Error）
       const values = await form.validateFields()
-      // edit 模式：选了新 DESIGN.md → PUT（服务端解析 + 校验 id 一致）
-      if (isEdit && mdFile && item) {
-        await api.putJson(item.slug, mdFile)
+      // edit 模式：选了新 zip 包 → PUT（服务端解压解析 + 内容替换）
+      if (isEdit && zipFile && item) {
+        await api.putJson(item.slug, zipFile)
       }
       if (item) {
         const patch: Partial<DesignSystemMeta> = {}
@@ -346,8 +348,8 @@ export default function DesignSystemFormModal({
         onClose()
         onSuccess?.(updated)
       } else {
-        // create
-        const result = await api.create(mdFile!, {
+        // create（>20MB 自动分片，控制台打印分片日志）
+        const result = await api.create(zipFile!, {
           name: values.name,
           desc: values.desc,
           default: values.default,
@@ -365,16 +367,16 @@ export default function DesignSystemFormModal({
     }
   }
 
-  /** 下载 DESIGN.md 模版（后端静态资源，走 /static 代理，与封面/图标同约定） */
+  /** 下载 zip 示例模版（后端静态资源，走 /static 代理，与封面/图标同约定） */
   const downloadTemplate = async () => {
     try {
-      const res = await fetch('/static/design-systems/templates/design-system.template.md')
+      const res = await fetch('/static/design-systems/templates/design-system.template.zip')
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'design-system.template.md'
+      a.download = 'design-system.template.zip'
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
@@ -382,21 +384,32 @@ export default function DesignSystemFormModal({
     }
   }
 
-  /** 下载当前 DESIGN.md 原件（用户面主文件；无 MD 的旧数据回落 JSON） */
+  /** 下载链接（Blob 化触发浏览器保存，避免 /static 直开） */
+  const downloadByUrl = async (url: string, filename: string) => {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const blob = await res.blob()
+      const objUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objUrl
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(objUrl)
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  /** 文件行下载：优先 zip 原件（用户面主文件）；无 zip 的旧数据回落 DESIGN.md → JSON */
   const downloadCurrentFile = async () => {
     if (!item) return
-    try {
-      if (item.design_md_url) {
-        const res = await fetch(item.design_md_url)
-        if (!res.ok) throw new Error('HTTP ' + res.status)
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'DESIGN.md'
-        a.click()
-        URL.revokeObjectURL(url)
-      } else {
+    if (item.zip_url) {
+      await downloadByUrl(item.zip_url, `source-${item.source_slug || item.slug}.zip`)
+    } else if (item.design_md_url) {
+      await downloadByUrl(item.design_md_url, 'DESIGN.md')
+    } else {
+      try {
         const data = await api.getJson(item.slug)
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         const url = URL.createObjectURL(blob)
@@ -405,9 +418,9 @@ export default function DesignSystemFormModal({
         a.download = 'design-system.json'
         a.click()
         URL.revokeObjectURL(url)
+      } catch (e) {
+        message.error(e instanceof Error ? e.message : String(e))
       }
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -417,9 +430,9 @@ export default function DesignSystemFormModal({
     return `编辑 — ${item?.name ?? ''}`
   }, [isCreate, isView, item?.name])
 
-  const canSubmit = isCreate ? !!mdFile && errors.length === 0 : true
+  const canSubmit = isCreate ? !!zipFile && errors.length === 0 : true
 
-  const fileInfoText = mdFile ? `${mdFile.name}（${fmtSize(mdFile.size)}）` : null
+  const fileInfoText = zipFile ? `${zipFile.name}（${fmtSize(zipFile.size)}）` : null
 
   /** 输入框（view 态只读文本；required 触发前端必填校验） */
   const renderInput = (name: keyof DesignSystemMeta, placeholder?: string, required?: boolean) => {
@@ -569,15 +582,15 @@ export default function DesignSystemFormModal({
     )
   }
 
-  /** 文件行：create=MD 拖拽区 + 模版下载；edit=JSON 下载 + 可选替换拖拽区；view=JSON 下载 */
+  /** 文件行：create=zip 拖拽区 + 模版下载；edit/view=文件下载 + 可选替换拖拽区；view 另展示规范 id */
   const renderFileRow = () => {
     if (isCreate) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: INPUT_WIDTH }}>
           <CompactDropzone
-            accept=".md,.markdown,text/markdown"
-            beforeUpload={handleMdFile}
-            hint="点击或拖拽 DESIGN.md 到此处 · ≤10MB"
+            accept=".zip,application/zip,application/x-zip-compressed"
+            beforeUpload={handleZipFile}
+            hint="点击或拖拽 zip 包到此处 · ≤200MB（>20MB 自动分片）"
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <Button size="small" onClick={downloadTemplate}>
@@ -597,8 +610,13 @@ export default function DesignSystemFormModal({
         </div>
       )
     }
-    // edit / view：当前文件（DESIGN.md，用户面主文件）下载链接 + 元信息
+    // edit / view：当前文件下载链接 + 元信息
     if (!item) return null
+    const mainLabel = item.zip_url
+      ? `source.zip（${fmtSize(item.file_size)}）`
+      : item.design_md_url
+        ? `DESIGN.md（${fmtSize(item.file_size)}）`
+        : `design-system.json（${fmtSize(item.file_size)}）`
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: INPUT_WIDTH }}>
         <Typography.Link
@@ -606,18 +624,27 @@ export default function DesignSystemFormModal({
           style={{ fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 4 }}
         >
           <DownloadOutlined />
-          {item.design_md_url ? `DESIGN.md（${fmtSize(item.file_size)}）` : `design-system.json（${fmtSize(item.file_size)}）`}
+          {mainLabel}
         </Typography.Link>
+        {item.skill_zip_url && (
+          <Typography.Link
+            onClick={() => downloadByUrl(item.skill_zip_url!, 'skill-design.zip')}
+            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          >
+            <DownloadOutlined />
+            skill-design.zip（附件）
+          </Typography.Link>
+        )}
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          调用量 {item.usage ?? 0} · 更新于{' '}
+          规范 id {item.source_slug || item.slug} · 调用量 {item.usage ?? 0} · 更新于{' '}
           {item.updated_at ? dayjs(item.updated_at).format('YYYY-MM-DD HH:mm') : '—'}
         </Typography.Text>
         {isEdit && (
           <div style={{ marginTop: 4 }}>
             <CompactDropzone
-              accept=".md,.markdown,text/markdown"
-              beforeUpload={handleMdFile}
-              hint="点击或拖拽新 DESIGN.md 替换（可选）· id 需与当前系统一致"
+              accept=".zip,application/zip,application/x-zip-compressed"
+              beforeUpload={handleZipFile}
+              hint="点击或拖拽新 zip 包替换（可选）· 内容全量替换"
             />
             {fileInfoText && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
@@ -627,7 +654,7 @@ export default function DesignSystemFormModal({
                 <Typography.Link
                   style={{ fontSize: 12 }}
                   onClick={() => {
-                    setMdFile(null)
+                    setZipFile(null)
                     setErrors([])
                   }}
                 >
