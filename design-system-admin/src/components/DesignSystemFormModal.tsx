@@ -23,7 +23,7 @@ import { userOption } from '../utils/userOption'
  * - edit：当前文件下载 + 可选替换 zip 包 + 当前封面/图标 + 可选换新 + 名称/作者/描述/默认
  * - view：只读展示 + 文件下载 + 封面/图标缩略图 + 查看完整 JSON
  *
- * 上传物为 zip 包（octo-design-zip/1：DESIGN.md + assets + skill-design.zip）；
+ * 上传物为 zip 包（octo-design-zip/1：DESIGN.md + assets + 任意名 .zip 附件）；
  * >20MB 自动分片（client.ts uploadZipFlow，控制台打印分片日志）。
  *
  * 编辑提交流程：
@@ -219,7 +219,7 @@ export default function DesignSystemFormModal({
     setErrors([])
     const ext = (f.name.split('.').pop() || '').toLowerCase()
     if (!ZIP_EXTS.includes(ext)) {
-      setErrors(['仅支持上传 zip 包（DESIGN.md + assets + skill-design.zip）'])
+      setErrors(['仅支持上传 zip 包（DESIGN.md + assets + 附件 .zip）'])
       return
     }
     if (f.size > MAX_ZIP_BYTES) {
@@ -628,11 +628,11 @@ export default function DesignSystemFormModal({
         </Typography.Link>
         {item.skill_zip_url && (
           <Typography.Link
-            onClick={() => downloadByUrl(item.skill_zip_url!, 'skill-design.zip')}
+            onClick={() => downloadByUrl(item.skill_zip_url!, item.skill_zip_url!.split('/').pop() || 'skill.zip')}
             style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             <DownloadOutlined />
-            skill-design.zip（附件）
+            下载附件（zip 内原文件名）
           </Typography.Link>
         )}
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>

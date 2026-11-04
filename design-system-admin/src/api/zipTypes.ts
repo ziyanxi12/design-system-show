@@ -34,8 +34,11 @@ export interface ZipParseResult {
   stats: ZipParseStats
   skill_zip: {
     present: boolean
+    /** 附件原文件名（DESIGN.md 同级任意 .zip，不强制命名） */
     filename: string | null
     size: number
+    /** 附件内容 base64（≤50MB 时回传，解析页直接提供下载链接）；超限为 null（入库后经 skill_zip_url 下载） */
+    content_base64?: string | null
   }
 }
 

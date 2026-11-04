@@ -37,6 +37,18 @@ export function isSessionExpired(): boolean {
   return Date.now() - loginTime > SESSION_EXPIRE_MS
 }
 
+/**
+ * 补写登录时间：正式环境统一登录页（sign/index.html）只写 userInfo 不写 loginTime，
+ * 由管理台在进入时自己写（仅缺失时写；已有值不覆盖，避免每次刷新续期）——
+ * 24 小时过期计时从首次进入管理台起算。须在 isSessionExpired() 之前调用，
+ * 否则 loginTime 缺失会被判为已过期 → expireLogout → 跳登录页死循环。
+ */
+export function ensureLoginTime(): void {
+  if (!localStorage.getItem(LOGIN_TIME_KEY)) {
+    localStorage.setItem(LOGIN_TIME_KEY, String(Date.now()))
+  }
+}
+
 /** 过期登出：清除登录态后跳登录页（AuthGuard 过期 / API 401 兜底共用） */
 export function expireLogout(): void {
   localStorage.removeItem(STORAGE_KEY)

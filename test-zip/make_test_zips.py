@@ -140,7 +140,7 @@ def main():
             components={"basic/button.html": BUTTON_HTML, "basic/button.css": BUTTON_CSS, "basic/input.html": INPUT_HTML},
             patterns={"form/list-layout.html": PATTERN_HTML},
         )
-        + [("skill-design.zip", b"demo skill attachment")],
+        + [("my-skill-pack.zip", b"demo skill attachment")],
     ))
 
     written.append(make_zip("valid-minimal.zip", [("DESIGN.md", DESIGN_MD)]))
@@ -149,8 +149,15 @@ def main():
         "valid-wrapper.zip",
         [("DESIGN.md", DESIGN_MD)]
         + valid_assets_entries(components={"basic/button.html": BUTTON_HTML})
-        + [("skill-design.zip", b"skill")],
+        + [("spec-skill.zip", b"skill")],
         prefix="pkg/",
+    ))
+
+    written.append(make_zip(
+        "valid-multi-skill-zips.zip",
+        [("DESIGN.md", DESIGN_MD)]
+        + valid_assets_entries(components={"basic/button.html": BUTTON_HTML})
+        + [("b-skill.zip", b"bbb"), ("a-skill.zip", b"aaa")],
     ))
 
     written.append(make_zip(
@@ -174,7 +181,7 @@ def main():
     chunked_entries = (
         [("DESIGN.md", DESIGN_MD)]
         + valid_assets_entries(components={"basic/button.html": BUTTON_HTML}, patterns={"form/list-layout.html": PATTERN_HTML})
-        + [("skill-design.zip", b"skill")]
+        + [("chunked-skill.zip", b"skill")]
         + [("assets/components/filler.bin", os.urandom(21 * 1024 * 1024))]
     )
     written.append(make_zip("valid-chunked-21mb.zip", chunked_entries))
@@ -194,6 +201,11 @@ def main():
     written.append(make_zip("invalid-bad-design-md.zip", [("DESIGN.md", DESIGN_MD_BAD)]))
 
     written.append(make_zip("invalid-no-token-section.zip", [("DESIGN.md", DESIGN_MD_NO_TOKEN)]))
+
+    written.append(make_zip(
+        "invalid-skill-name-conflict.zip",
+        [("DESIGN.md", DESIGN_MD), ("source.zip", b"conflicting attachment")],
+    ))
 
     path = os.path.join(BASE, "invalid-zip-slip.zip")
     with zipfile.ZipFile(path, "w") as zf:
@@ -236,9 +248,10 @@ def main():
 
 
 EXPECT = {
-    "valid-full.zip": (200, "components=2 patterns=1 skill_zip=True"),
+    "valid-full.zip": (200, "components=2 patterns=1 skill=my-skill-pack.zip"),
     "valid-minimal.zip": (200, "components=0"),
-    "valid-wrapper.zip": (200, "components=1"),
+    "valid-wrapper.zip": (200, "components=1 skill=spec-skill.zip"),
+    "valid-multi-skill-zips.zip": (200, "skill=a-skill.zip（多个取排序第一个）"),
     "valid-reupload-v2.zip": (200, "slug=e2e-system-v2"),
     "valid-duplicate-names.zip": (200, "unique ids"),
     "valid-big-html.zip": (200, "html not embedded"),
@@ -247,6 +260,7 @@ EXPECT = {
     "invalid-missing-design-md.zip": (400, "缺少 DESIGN.md"),
     "invalid-bad-design-md.zip": (400, "frontmatter"),
     "invalid-no-token-section.zip": (400, "token 区块"),
+    "invalid-skill-name-conflict.zip": (400, "保留文件"),
     "invalid-zip-slip.zip": (400, "回溯"),
     "invalid-backslash-slip.zip": (400, "回溯"),
     "invalid-absolute-path.zip": (400, "绝对路径"),
@@ -282,7 +296,11 @@ def verify():
             status, payload = e.code, json.load(e)
         got_ok = status == want_status
         detail = payload.get("detail", "") if status == 400 else (
-            f"组件 {payload['stats']['components']} · Pattern {payload['stats']['patterns']} · 附件 {'有' if payload['skill_zip']['present'] else '无'}"
+            "组件 %d · Pattern %d · 附件 %s%s" % (
+                payload["stats"]["components"], payload["stats"]["patterns"],
+                payload["skill_zip"]["filename"] or "无",
+                "（base64 已回传）" if payload["skill_zip"]["content_base64"] else "",
+            )
         )
         mark = "PASS" if got_ok else "FAIL(期望 %s)" % want_status
         print(f"[{mark}] {name:32s} → {status} {detail}")

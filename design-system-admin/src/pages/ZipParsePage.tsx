@@ -25,6 +25,20 @@ interface ParseState {
   parseKey: number
 }
 
+/** 附件 base64 → Blob 下载（文件名用 zip 内原文件名；超限无 content_base64 时由调用方提示） */
+function downloadSkillZip(skill: { filename: string | null; content_base64?: string | null }): boolean {
+  const b64 = skill.content_base64
+  if (!b64) return false
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = skill.filename || 'skill-design.zip'
+  a.click()
+  URL.revokeObjectURL(url)
+  return true
+}
+
 /** assets 条目 → antd Tree 数据（按 group 层级组装，叶子为组件/Pattern 名） */
 function buildTree(result: ZipParseResult): DataNode[] {
   const rootChildren: DataNode[] = []
@@ -89,7 +103,7 @@ export default function ZipParsePage() {
   const handleFile = async (f: File) => {
     const ext = (f.name.split('.').pop() || '').toLowerCase()
     if (ext !== 'zip') {
-      message.error('仅支持解析 zip 包（DESIGN.md + assets + skill-design.zip）')
+      message.error('仅支持解析 zip 包（DESIGN.md + assets + 附件 .zip）')
       return
     }
     if (f.size > 200 * 1024 * 1024) {
@@ -113,7 +127,7 @@ export default function ZipParsePage() {
       }))
       const secs = ((performance.now() - t0) / 1000).toFixed(2)
       console.log(
-        `[zip-parse] 解析成功（${secs}s）：规范 id=${result.stats.slug}，组件 ${result.stats.components} 个，Pattern ${result.stats.patterns} 个，附件 ${result.skill_zip.present ? '有 skill-design.zip' : '无'}`,
+        `[zip-parse] 解析成功（${secs}s）：规范 id=${result.stats.slug}，组件 ${result.stats.components} 个，Pattern ${result.stats.patterns} 个，附件 ${result.skill_zip.present ? result.skill_zip.filename : '无'}`,
       )
     } catch (e) {
       console.error('[zip-parse] 解析失败：', e instanceof Error ? e.message : e)
@@ -154,7 +168,7 @@ export default function ZipParsePage() {
           <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
             点击或拖拽 zip 包解析预览
             <br />
-            DESIGN.md + assets + skill-design.zip
+            DESIGN.md + assets + 任意名 .zip 附件
           </div>
         </Upload.Dragger>
 
@@ -184,9 +198,21 @@ export default function ZipParsePage() {
                   <Typography.Text style={{ fontSize: 12 }}>
                     附件：
                     {state.result.skill_zip.present
-                      ? `skill-design.zip（${(state.result.skill_zip.size / 1024).toFixed(1)}KB，入库后可经完整链接下载）`
-                      : 'zip 内无 skill-design.zip'}
+                      ? `${state.result.skill_zip.filename ?? '附件'}（${(state.result.skill_zip.size / 1024).toFixed(1)}KB）`
+                      : 'zip 内无附件（DESIGN.md 同级无 .zip 文件）'}
                   </Typography.Text>
+                  {state.result.skill_zip.present && state.result.skill_zip.content_base64 ? (
+                    <Typography.Link
+                      style={{ fontSize: 12, width: 'fit-content' }}
+                      onClick={() => downloadSkillZip(state.result.skill_zip)}
+                    >
+                      下载附件
+                    </Typography.Link>
+                  ) : state.result.skill_zip.present ? (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      附件超过 50MB，未随解析结果回传；正式入库后可经完整链接下载
+                    </Typography.Text>
+                  ) : null}
                 </div>
               }
             />
@@ -263,7 +289,7 @@ export default function ZipParsePage() {
           <iframe
             key={state.parseKey}
             ref={iframeRef}
-            src="/design-systems/detail/template.html"
+            src="./design-systems/detail/template.html"
             title="design-system-template"
             style={{ flex: 1, border: 0, width: '100%' }}
           />
