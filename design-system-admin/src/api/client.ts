@@ -5,7 +5,7 @@
  */
 import { ACCOUNT_API_BASE, API_BASE } from '../config'
 import { ApiError } from './errors'
-import { getEncryptedUserData } from '../utils/auth'
+import { expireLogout, getEncryptedUserData } from '../utils/auth'
 import type {
   AuthorEntry,
   DesignSystemItem,
@@ -30,6 +30,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     /* ignore */
   }
   const res = await fetch(`${API_BASE}${url}`, { ...options, headers, credentials: 'include' })
+  if (res.status === 401 || res.status === 403) {
+    // 后端 session 过期/无权限：清除登录态并跳登录页（与 AuthGuard 的 24h 过期共用 expireLogout）
+    expireLogout()
+    throw new ApiError(res.status, '登录已过期，请重新登录')
+  }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`
     try {

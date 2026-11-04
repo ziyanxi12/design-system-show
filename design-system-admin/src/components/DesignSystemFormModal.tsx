@@ -365,10 +365,10 @@ export default function DesignSystemFormModal({
     }
   }
 
-  /** 下载 DESIGN.md 模版（public/templates 下的静态文件，blob 方式强制下载） */
+  /** 下载 DESIGN.md 模版（后端静态资源，走 /static 代理，与封面/图标同约定） */
   const downloadTemplate = async () => {
     try {
-      const res = await fetch('/templates/design-system.template.md')
+      const res = await fetch('/static/design-systems/templates/design-system.template.md')
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -556,8 +556,8 @@ export default function DesignSystemFormModal({
               }
               filterOption={false}
               getPopupContainer={() => authorContainerRef.current ?? document.body}
-              dropdownMatchSelectWidth={false}
-              dropdownStyle={{ width: '100%', position: 'absolute', top: '100%', left: 0, marginTop: 4 }}
+              popupMatchSelectWidth={false}
+              styles={{ popup: { root: { width: '100%', position: 'absolute', top: '100%', left: 0, marginTop: 4 } } }}
               style={{ width: '100%', padding: 0 }}
             />
           </div>

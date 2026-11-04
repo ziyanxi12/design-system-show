@@ -120,6 +120,7 @@
 
     function login(data) {
       localStorage.setItem('userInfo', JSON.stringify(data))
+      localStorage.setItem('loginTime', String(Date.now()))
       window.location.href = redirect
     }
 

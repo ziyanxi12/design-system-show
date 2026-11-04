@@ -277,9 +277,9 @@ export default function PeopleManagement() {
                       searching ? '搜索中…' : keyword ? `未找到「${keyword}」相关成员` : null
                     }
                     filterOption={false}
-                    dropdownMatchSelectWidth={false}
+                    popupMatchSelectWidth={false}
                     getPopupContainer={() => pendingContainerRef.current ?? document.body}
-                    dropdownStyle={{ width: '100%', position: 'absolute', top: '100%', left: 0, marginTop: 4 }}
+                    styles={{ popup: { root: { width: '100%', position: 'absolute', top: '100%', left: 0, marginTop: 4 } } }}
                     style={{ width: '100%', padding: 0 }}
                     disabled={adding}
                   />
