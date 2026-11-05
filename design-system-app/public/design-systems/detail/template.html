@@ -66,6 +66,23 @@
     .nav-grp.open .nav-sub { display: flex; }
     .nav-sub button { height: 32px; padding: 0 12px 0 40px; font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 32px; }
     .nav-sub button.on { background: none; color: var(--brand); font-weight: 500; }
+    /* 组件目录三级导航：类目（二级菜单，可折叠）→ 组件（三级菜单） */
+    .nav-sub .nav-category { display: flex; flex-direction: column; }
+    .nav-sub .nav-category .sub-h {
+      height: 30px; padding: 0 12px 0 28px; font-size: 13px; color: var(--text-primary); font-weight: 500;
+      display: flex; align-items: center; background: none; text-align: left; white-space: nowrap;
+    }
+    .nav-sub .nav-category .sub-h:hover { color: var(--brand); }
+    .nav-sub .nav-category .sub-h.on { color: var(--brand); }
+    .nav-sub .nav-category .sub-h .cat-chev {
+      margin-left: auto; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
+      color: var(--text-3); transition: transform .15s; flex-shrink: 0;
+    }
+    .nav-sub .nav-category .sub-h .cat-chev svg { width: 12px; height: 12px; }
+    .nav-sub .nav-category:not(.open) .sub-h .cat-chev { transform: rotate(-90deg); }
+    .nav-sub .nav-cat-items { display: none; flex-direction: column; gap: 2px; margin: 2px 0 6px; max-height: 300px; overflow: auto; }
+    .nav-sub .nav-category.open .nav-cat-items { display: flex; }
+    .nav-sub .nav-cat-items .sub-l2 { padding-left: 52px; }
 
     .main { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 24px; padding: 0 0 24px; scrollbar-width: thin; }
     .main::-webkit-scrollbar { width: 6px; }
@@ -205,7 +222,7 @@
     .src-badge.shot { color: #B45309; border: 1px dashed rgba(180,83,9,.4); background: rgba(245,158,11,.08); }
     .src-badge.gray { color: var(--text-3); }
     .ct-table { border: 1px solid var(--border-1); border-radius: 12px; overflow: hidden; }
-    .ct-row { display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; border-top: 1px solid var(--border-1); }
+    .ct-row { display: grid; grid-template-columns: 240px minmax(0, 1fr); border-top: 1px solid var(--border-1); }
     .ct-row:first-child { border-top: 0; }
     .ct-row > div { padding: 20px; min-width: 0; }
     .ct-row > div + div { border-left: 1px solid var(--border-1); }
@@ -220,29 +237,8 @@
     .ct-shots img { height: 56px; border-radius: 8px; background: #F2F3F5; transition: transform .15s; }
     .ct-shots img:hover { transform: scale(1.6); position: relative; z-index: 2; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
     .ct-empty { border: 1px dashed rgba(0,0,0,.16); border-radius: 8px; padding: 20px; text-align: center; color: var(--text-3); font-size: 13px; }
-    .ct-map { display: flex; flex-direction: column; gap: 8px; font-size: 12px; position: relative; }
-    .ct-map-h { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-    .ct-map-h b { font-weight: 500; color: var(--text-primary); }
-    .ct-map-h .map-st { margin-left: auto; }
-    .map-ic { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
-    .map-ic.pixso { background: linear-gradient(135deg, #6E5BFF, #2F7BFF); }
-    .map-ic.code { background: #191919; font-size: 9px; }
-    .map-ic.tok { background: var(--brand); }
-    .map-st { font-size: 12px; font-weight: 400; line-height: 20px; padding: 0 8px; border-radius: 999px; }
-    .map-st.ok { background: rgba(100, 187, 92, .12); color: #3E9C3A; }
-    .map-st.warn { background: rgba(245, 158, 11, .12); color: #B45309; }
-    .map-st.miss { background: var(--fill-1); color: var(--text-3); }
-    .map-kv { display: grid; grid-template-columns: 56px 1fr; gap: 8px; font-size: 13px; align-items: center; }
-    .map-kv span { color: var(--text-3); }
-    .map-kv b { font-weight: 400; color: var(--text-1); }
-    .map-props { display: flex; flex-wrap: wrap; gap: 6px; }
-    .map-prop { font-size: 12px; padding: 1px 8px; border-radius: 6px; background: var(--brand-08); color: var(--brand); }
     .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
-    .map-btn { align-self: flex-start; height: 28px; font-size: 13px; margin-top: auto; }
-    .ct-map.none .ct-map-h b { color: var(--text-3); font-weight: 400; }
-    .ct-map-note { color: var(--text-3); line-height: 18px; }
-    .ct-sample { align-self: flex-start; }
-    .ct-row { grid-template-columns: clamp(150px, 13vw, 240px) minmax(0, 1fr) clamp(210px, 17vw, 300px); }
+    .ct-row { grid-template-columns: clamp(150px, 13vw, 240px) minmax(0, 1fr); }
     .ct-row > div { padding: 16px; }
 
     /* ---------- token 推导预览（引用主题变量） ---------- */
@@ -460,13 +456,17 @@
     }
 
     /* ================= 分区框架 ================= */
+    /* 九个固定菜单：无数据的区块以空态展示（数据没解析出来也保持菜单存在） */
     const SECTIONS = [
       { key: "overview", label: "概览", icon: "sec-overview" },
       { key: "color", label: "颜色", icon: "sec-color" },
       { key: "typography", label: "字体", icon: "sec-type" },
       { key: "spacing", label: "间距", icon: "sec-spacing" },
       { key: "radius", label: "圆角", icon: "sec-radius" },
-      { key: "shadow", label: "阴影", icon: "sec-shadow" }
+      { key: "shadow", label: "阴影", icon: "sec-shadow" },
+      { key: "components", label: "组件", icon: "sec-component" },
+      { key: "layout", label: "布局与适配", icon: "sec-layout" },
+      { key: "patterns", label: "Pattern", icon: "sec-layout" }
     ];
     const ui = { typeSample: "", spScene: 0, radScene: 0, assetSub: {}, assetShow: {}, assetQuery: "" };
 
@@ -480,8 +480,8 @@
       const s = SECTIONS.find(x => x.key === sec);
       return '<div class="sec-label">' + s.label + '</div><div class="sec-title">' + s.label + '</div>' +
         '<div class="sec-empty"><span class="ei">' + icon(s.icon) + '</span>' +
-        '<b>暂未从规范 Skill 中提取到「' + s.label + '」</b>' +
-        '<span>来源：' + esc(ds.source && ds.source.skill || ds.name) + '。在规范中补充' + s.label + '定义后，可重新同步。</span></div>';
+        '<b>当前设计系统暂无关联内容</b>' +
+        '<span>来源：' + esc(ds.source && ds.source.skill || ds.name) + '。补充' + s.label + '相关内容后，重新同步即可展示。</span></div>';
     }
 
     const rulesHtml = rules => rules && rules.length ? '<div class="rules"><h4>' + icon("info") + '使用规则</h4><ul>' + rules.map(r => '<li>' + esc(r).replace(/`([^`]+)`/g, "<code>$1</code>") + '</li>').join("") + '</ul></div>' : "";
@@ -491,6 +491,7 @@
       if (!box) return;
       if (!ds[key]) { box.innerHTML = emptyState(ds, key); return; }
       const R = { overview: rOverview, color: rColor, typography: rType, spacing: rSpacing, radius: rRadius, shadow: rShadow, components: rComponents, assets: rAssets, patterns: rPatterns }[key];
+      if (!R) { box.innerHTML = emptyState(ds, key); return; }   // 无渲染器的区块（如 layout）一律空态
       R(box, ds, mapping);
     }
 
@@ -603,10 +604,7 @@
     const LIVE = "__live";
     const STATES = [[LIVE, "交互"], ["hover", "悬停"], ["pressed", "按下"], ["disabled", "禁用"]];
     const FORCE = { enabled: "rest", normal: "rest", default: "rest", hover: "hover", pressed: "pressed", active: "pressed", focus: "focus", focused: "focus", disabled: "disabled", loading: "loading" };
-    const SRC_BADGE = { source: ["源码渲染", "ok", "规范内有组件源码"], ai: ["AI 生成", "ai", "无源码，按规范与 token 生成"], shot: ["验证截图", "shot", "仅有截图"], token: ["token 推导", "shot", "按 token 推导"], none: ["无法生成", "gray", "描述不足"] };
-    const STATUS = { aligned: ["已对齐", "ok"], partial: ["部分对齐", "warn"], missing: ["未关联", "miss"] };
     const TOKEN_PREVIEW = ["button", "input", "search", "numeric", "form", "switch", "checkbox", "radio", "tabs", "tag", "alert", "badge", "pagination", "card", "dialog", "drawer", "breadcrumb", "link"];
-    const mapFor = (mapping, it) => (mapping || {})[it.id];
 
     function variantAxes(it) {
       if (it.variants) {
@@ -794,12 +792,12 @@
 
     const dsDataDir = ds => "systems/" + ds.id;
 
+    /* 组件表两列：名称 | 预览；第一列只显示名字（不展示属性/映射等附加信息） */
     function paintRow(box, ds, mapping, i) {
       const it = ds.components.items[i], row = document.getElementById("cmp-" + i);
       if (!row) return;
-      const mode = previewMode(it), bt = SRC_BADGE[mode][0], bc = SRC_BADGE[mode][1];
+      const mode = previewMode(it);
       const ax = variantAxes(it);
-      const propNames = it.variants ? ax.axes.map(a => a.k).concat((it.interaction || {}).stateAxis ? [(it.interaction || {}).stateAxis] : []) : (it.props || []).filter(p => typeof p === "object").map(p => p.name);
       let previewHtml;
       if (mode === "ai" || mode === "source") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
       else if (mode === "shot") previewHtml = '<div class="ct-shots">' + it.variants.slice(0, 8).map(v => '<img src="' + dsDataDir(ds) + "/" + v.image + '" alt="" title="' + esc(Object.values(v.props).join(" · ")) + '">').join("") + '</div>';
@@ -809,36 +807,11 @@
         previewHtml = '<div class="ct-empty">源码文件未随包提供，暂无预览' + (paths ? '<br><span style="opacity:.7">' + paths + '</span>' : "") + '</div>';
       }
 
-      const m = mapFor(mapping, it);
-      const mapHtml = m ?
-        '<div class="ct-map">' +
-        '<div class="ct-map-h"><b>' + esc(m.pixso.component) + '</b>' + (function () { const st = STATUS[m.pixso.status] || STATUS.missing; return '<span class="map-st ' + st[1] + '">' + st[0] + '</span>'; })() + '</div>' +
-        '<div class="ct-map-kv"><span>组件库</span>' + esc(m.pixso.library) + '</div>' +
-        (m.pixso.logicalName ? '<div class="ct-map-kv"><span>逻辑名</span>' + esc(m.pixso.logicalName) + '</div>' : "") +
-        (m.pixso.verification ? '<div class="ct-map-kv"><span>关联状态</span>' + esc(m.pixso.verification) + '</div>' : "") +
-        '<div class="ct-map-kv"><span>变体属性</span><div class="map-props">' + (Object.keys(m.pixso.props || {}).length ? Object.entries(m.pixso.props).map(([k, d]) => '<span class="map-prop" title="' + esc(Object.entries(d.values).map(([a, b]) => a + " → " + b).join("\n")) + '">' + esc(PROP_CN[k] || k) + " → " + esc(d.label) + '</span>').join("") : "—") + '</div></div>' +
-        '<div class="ct-map-kv"><span>变体数</span>' + (m.pixso.variants != null ? m.pixso.variants : Object.values(m.pixso.props || {}).reduce((a, d) => a * Object.keys(d.values).length, 1)) + ' 个</div>' +
-        '<div class="ct-map-kv"><span>绑定变量</span>' + (m.tokens || m.rows || []).length + ' 个</div>' +
-        (m.pixso.nodeId ? '<div class="ct-map-kv"><span>nodeId</span>' + esc(m.pixso.nodeId) + '</div>' : "") +
-        (m.pixso.propsNote ? '<div class="ct-map-kv"><span>备注</span>' + esc(m.pixso.propsNote) + '</div>' : "") +
-        (m.sample ? '<span class="tag gray ct-sample">示意数据</span>' : "") +
-        '<button class="btn btn-ghost map-btn" data-map-act="open">在 Pixso 中打开 ↗</button>' +
-        '</div>'
-        : '<div class="ct-map none"><div class="ct-map-h"><b>未关联 Pixso 组件</b></div><div class="ct-map-note">关联后可在生成设计稿时使用对应组件实例</div><button class="btn btn-ghost map-btn" data-map-act="link">关联组件</button></div>';
-
       row.innerHTML =
         '<div class="ct-name">' +
-        '<div class="nm">' + esc(it.name) + '</div>' +
-        (it.desc ? '<div class="props">' + esc(it.desc) + '</div>' : "") +
-        (propNames.length ? '<div class="props">' + propNames.map(esc).join(" · ") + '</div>' : "") +
-        (it.category ? '<div class="props">' + esc(it.category) + (it.categoryId ? ' · ' + esc(it.categoryId) : "") + (it.order != null ? ' · order ' + esc(String(it.order)) : "") + '</div>' : "") +
-        (it.states && it.states.length ? '<div class="props">状态：' + it.states.map(esc).join(" / ") + (it.missingStates && it.missingStates.length ? '（缺失：' + it.missingStates.map(esc).join(" / ") + '）' : "") + '</div>' : "") +
-        (it.tokenRoles && it.tokenRoles.length ? '<div class="props" title="' + esc(it.tokenRoles.join("\n")) + '">token：' + it.tokenRoles.map(esc).join(" · ") + '</div>' : "") +
-        ((it.rules || []).length ? it.rules.map(r => '<div class="props">' + esc(r) + '</div>').join("") : "") +
-        '<span class="src-badge ' + bc + '" title="' + esc(SRC_BADGE[mode][2]) + '">' + bt + '</span>' +
+        '<div class="nm">' + esc(compRowName(it)) + '</div>' +
         '</div>' +
-        '<div class="ct-preview">' + previewHtml + '</div>' +
-        '<div class="ct-mapcol">' + mapHtml + '</div>';
+        '<div class="ct-preview">' + previewHtml + '</div>';
 
       if (mode === "ai" || mode === "source") {
         const f = $(".cp-frame", row);
@@ -861,22 +834,33 @@
       }
     }
 
+    /* 组件名：目录层级拼在 name 前缀（"类目 / 组件名"），表格里只显示去掉前缀后的名字 */
+    function compRowName(it) {
+      if (!it.group || !it.group.length) return it.name;
+      const prefix = it.group.join(" / ") + " / ";
+      return it.name.indexOf(prefix) === 0 ? it.name.slice(prefix.length) : it.name;
+    }
+
+    /* 组件侧边导航分组：zip 目录第一层（group[0]）为二级菜单，无目录的组件直接平铺 */
+    function compNavGroups(items) {
+      const groups = [], byLabel = {}, loose = [];
+      items.forEach(it => {
+        const label = it.group && it.group.length ? String(it.group[0]) : "";
+        if (!label) { loose.push(it); return; }
+        if (!byLabel[label]) { byLabel[label] = { label: label, items: [] }; groups.push(byLabel[label]); }
+        byLabel[label].items.push(it);
+      });
+      return { groups: groups, loose: loose };
+    }
+
     function rComponents(box, ds, mapping) {
       const c = ds.components;
       box.innerHTML = sectionShell("components", c.title, esc(c.desc)) +
         '<div class="ct-table">' +
-        '<div class="ct-row ct-th"><div>名称</div><div>预览</div><div>映射的设计组件</div></div>' +
+        '<div class="ct-row ct-th"><div>名称</div><div>预览</div></div>' +
         c.items.map((it, i) => '<div class="ct-row cp-block" id="cmp-' + i + '" data-cmp-block="' + i + '"></div>').join("") +
         '</div>';
       c.items.forEach((it, i) => paintRow(box, ds, mapping, i));
-      box.onclick = e => {
-        const b = e.target.closest("[data-map-act]");
-        if (!b) return;
-        const it = c.items[Number(b.closest("[data-cmp-block]").dataset.cmpBlock)];
-        const mm = mapFor(mapping, it);
-        if (b.dataset.mapAct === "open" && mm && mm.pixso && mm.pixso.url) { window.open(mm.pixso.url, "_blank"); return; }
-        toast(b.dataset.mapAct === "link" ? "为「" + it.name + "」关联 Pixso 组件（Demo 模拟）" : "将在 Pixso 中打开「" + (mm && mm.pixso ? mm.pixso.component : it.name) + "」（Demo 模拟）");
-      };
     }
 
     /* ---------- 资产（demo rAssets 移植，成员视角） ---------- */
@@ -954,7 +938,7 @@
       };
     }
 
-    /* ---------- 布局 Pattern ---------- */
+    /* ---------- Pattern ---------- */
     function patternDoc(ds, state, key, bg) {
       const vars = themeVars(deriveTheme(ds));
       const fit = '<scr' + 'ipt>new ResizeObserver(()=>parent.postMessage({cpFrame:"' + key + '",h:document.body.scrollHeight},"*")).observe(document.body);</scr' + 'ipt>';
@@ -964,7 +948,7 @@
     function rPatterns(box, ds) {
       const p = ds.patterns;
       const view = p.view || {}, bg = view.bg || "#fff";
-      box.innerHTML = sectionShell("patterns", p.title || "布局 Pattern", esc(p.desc)) +
+      box.innerHTML = sectionShell("patterns", p.title || "Pattern", esc(p.desc)) +
         '<div class="sub-block"><div class="props">视图源码：' + esc((view.html || {}).$file || "—") + ((view.css || {}).$file ? ' · 样式：' + esc(view.css.$file) : "") + '</div></div>' +
         (p.items || []).map(it => '<div class="sub-block">' +
           '<div class="sub-title">' + esc(it.name) + (it.label ? '<small>' + esc(it.label) + '</small>' : "") + '</div>' +
@@ -993,25 +977,30 @@
 
     /* ================= 页面组装 ================= */
     const CHEV_ICON = '<span class="chev"><svg viewBox="0 0 14 14" fill="none"><path d="M3.5 5L7 8.5L10.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+    const CAT_CHEV_ICON = '<span class="cat-chev"><svg viewBox="0 0 14 14" fill="none"><path d="M3.5 5L7 8.5L10.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
 
     function buildPage(ds, meta, mapping) {
       const app = document.getElementById("app");
       const compItems = (ds.components && ds.components.items) || [];
-      /* 数据驱动扩展区块：zip 包（octo-design-zip/1）带来 components/patterns 数据时追加
-         导航与区块卡片；存量 MD 上传数据无这些键，行为零变化 */
-      if (compItems.length && !SECTIONS.some(s => s.key === "components"))
-        SECTIONS.push({ key: "components", label: "组件", icon: "sec-component" });
-      if (ds.patterns && !SECTIONS.some(s => s.key === "patterns"))
-        SECTIONS.push({ key: "patterns", label: "布局 Pattern", icon: "sec-component" });
-      // 头部（面包屑/标题/作者/调用量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据
+      const compNav = compNavGroups(compItems);
+      // 头部（面包屑/标题/作者/调用量/预览量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据；
+      // 九个固定菜单恒渲染，无数据的区块（组件/布局与适配/Pattern 等）以空态展示
       app.innerHTML =
         '<div class="body">' +
           '<nav class="nav" id="nav">' + SECTIONS.map(s => {
             const ic = '<span class="nav-ic">' + ((window.ICONS || {})[s.icon] || "") + '</span>';
             if (s.key === "components" && compItems.length) {
+              /* 有目录层级的组件：类目二级菜单（可折叠）→ 组件三级菜单；无目录的组件直接平铺 */
               return '<div class="nav-grp">' +
                 '<button data-sec="components">' + ic + '组件' + CHEV_ICON + '</button>' +
-                '<div class="nav-sub">' + compItems.map((it, i) => '<button data-cmp="' + i + '">' + esc(it.name) + '</button>').join("") + '</div></div>';
+                '<div class="nav-sub">' +
+                  compNav.groups.map(g =>
+                    '<div class="nav-category" data-nav-cat="' + esc(g.label) + '">' +
+                      '<button class="sub-h" data-cat="' + esc(g.label) + '"><span>' + esc(g.label) + '</span>' + CAT_CHEV_ICON + '</button>' +
+                      '<div class="nav-cat-items">' + g.items.map(it => { const i = compItems.indexOf(it); return '<button class="sub-l2" data-cmp="' + i + '" title="' + esc(compRowName(it)) + '">' + esc(compRowName(it)) + '</button>'; }).join("") + '</div>' +
+                    '</div>').join("") +
+                  compNav.loose.map(it => { const i = compItems.indexOf(it); return '<button data-cmp="' + i + '">' + esc(compRowName(it)) + '</button>'; }).join("") +
+                '</div></div>';
             }
             return '<button data-sec="' + s.key + '">' + ic + s.label + '</button>';
           }).join("") + '</nav>' +
@@ -1030,6 +1019,8 @@
       nav.addEventListener("click", e => {
         const chev = e.target.closest(".chev");
         if (chev) { e.stopPropagation(); const grp = chev.closest(".nav-grp"); if (grp) grp.classList.toggle("open"); return; }
+        const cat = e.target.closest("[data-cat]");
+        if (cat) { e.stopPropagation(); cat.closest(".nav-category").classList.toggle("open"); return; }
         const sub = e.target.closest("[data-cmp]");
         if (sub) {
           const idx = Number(sub.dataset.cmp);
@@ -1056,6 +1047,13 @@
       function setNav(sec, cmp) {
         nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null));
         nav.querySelectorAll("[data-cmp]").forEach(b => b.classList.toggle("on", sec === "components" && Number(b.dataset.cmp) === cmp));
+        /* 滚动高亮到某个组件时，确保它所在的类目分组展开可见 */
+        nav.querySelectorAll(".nav-category").forEach(cat => {
+          const active = cat.querySelector('[data-cmp].on');
+          cat.classList.toggle("open", !!active);
+          const h = cat.querySelector(".sub-h");
+          if (h) h.classList.toggle("on", !!active);
+        });
       }
 
       main.addEventListener("scroll", () => {

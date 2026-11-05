@@ -67,6 +67,7 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
         { "id": 112, "userID": "u00112", "account": "l20031135", "nickName": "罗唯", "dept": ["华为", "2012实验室", "UX部", "设计二组"] }
       ],
       "usage": 143,
+      "views": 1286,
       "cover": "cover-blue.jpg",
       "cover_url": "/static/design-systems/covers/cover-blue.jpg",
       "icon": "design-systems/icons/h-design.svg",
@@ -107,6 +108,8 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
   （`PUBLIC_ORIGIN` 若非空仍会生成 `{PUBLIC_ORIGIN}{ROOT_PATH}/static/...` 绝对 URL，为 lib-resource 兼容保留）
 - `usage`：**不从 MD frontmatter 派生**（v2 需求：md 里的 usage 值不允许直接使用）——新增恒 0，
   修正通道仅 PATCH 的 `usage` 字段与 `/usage` 自增接口；重传保留现值
+- `views`：**预览量**——展示端设计系统详情页**每次加载自动 +1**（`POST /{slug}/views`），
+  新增恒 0；高频调用不写操作日志、不动 `updated_at`；展示端头部用接口返回值即时显示
 - `created_by/updated_by` 为 account，`*_name` 为「昵称 account」显示名——直查 users 表解析，无记录时回落 account
 - 排序：`default` 置顶，其余按 `created_at` 倒序（slug 已随机化，字典序无意义）
 
@@ -232,6 +235,19 @@ MD id 变化只更新 `source_slug`（slug 与落盘目录不动，操作日志�
 
 **响应**：`{"slug": "text-to-ui", "usage": 4}`
 
+### 7a. POST /api/design-systems/{slug}/views —— 预览量自增
+
+**语义**：展示端设计系统详情页**每次加载**调用一次，`views += 1`（与 `/usage` 的外部显式调用不同，
+本接口由展示端前端自动触发，用于「调用量旁边展示预览量」的需求）。
+
+**行为**：
+
+- 每次调用 `views += 1`，SQL 端原子自增（并发安全）
+- 高频调用：不写操作日志；`updated_at` 保持不变
+- slug 不存在 → 404
+
+**响应**：`{"slug": "h-design", "views": 1287}`
+
 ## 8. 设计系统白名单（独立于原 /api/whitelist，账号与开关互不影响）
 
 管理台登录校验与权限数据源。**与 lib-resource 原白名单完全隔离**：给设计系统加账号不影响
@@ -300,6 +316,7 @@ is_active（软删）、created_at/updated_at。
 | source_slug | varchar(100) | DESIGN.md frontmatter 的 id 原样保留（**不唯一，允许重复**；展示/搜索/追溯）。存量数据启动时回填 = slug |
 | name / desc | varchar(255) / text | 卡片字段 |
 | usage | int | 调用量（默认 0；**不从 MD 派生**） |
+| views | int | 预览量（默认 0；展示端详情页每次加载自动 +1，走 /views 接口） |
 | author | text | 作者，JSON 数组字符串（/getAccount 完整值：`[{id, userID, account, nickName, dept}]`）；旧数据为纯字符串（昵称语义），读取时自动包装 |
 | cover | varchar(100) | 内置封面名（cover-cyan.jpg）或自定义封面相对路径（design-systems/covers/{slug}.webp） |
 | icon | text | 图标相对路径（design-systems/icons/{slug}.svg），无则空 |

@@ -7,6 +7,8 @@ export type DsMeta = {
   /** 作者（/getAccount 完整值，驼峰：id/userID/account/nickName/dept） */
   authors?: AuthorEntry[]
   usage?: number
+  /** 预览量（api1 的 views：详情页每次加载自动 +1） */
+  views?: number
   cover?: string
   /** 封面完整 URL（api1 的 cover_url） */
   coverImg?: string
@@ -42,6 +44,7 @@ type ApiItem = {
   desc?: string
   author?: AuthorEntry[]
   usage?: number
+  views?: number
   cover?: string
   cover_url: string
   json_url: string
@@ -79,6 +82,7 @@ fetch(`${API_BASE}/api/design-systems`)
           desc: i.desc,
           authors: Array.isArray(i.author) ? i.author : [],
           usage: i.usage,
+          views: i.views,
           cover: i.cover,
           coverImg: i.cover_url,
           jsonUrl: i.json_url,
