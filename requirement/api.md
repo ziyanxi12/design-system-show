@@ -235,6 +235,38 @@ MD id 变化只更新 `source_slug`（slug 与落盘目录不动，操作日志�
 
 **响应**：`{"slug": "text-to-ui", "usage": 4}`
 
+**打点事件**：7/7a 两个自增接口同时向 `ds_usage_events` 写入一行打点事件（与列自增同事务）：
+
+| 列 | 说明 |
+|---|---|
+| slug / event_type | 设计系统 + view（预览）/ usage（调用） |
+| account / nick_name / dept1..4 | 操作人快照（见下方「打点身份完整化」）；匿名调用 account 为空 |
+| created_at | 打点时间（统计页时间序列 / 最近调用的来源） |
+
+**打点身份完整化**（事件写入前，失败静默降级、绝不丢打点）：
+
+```
+X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddleware 平时 upsert 的缓存）
+    └─仍缺──► GET_ACCOUNT_API_URL 按 account 精确补全（短超时，成功则回写 users 表，
+               同一账号外部服务最多查 1 次） ──仍缺──► 用手头信息降级写事件
+```
+
+- 部门快照口径：**dept1..dept4 = 部门数组的下标 1~4**（dept[0] 为公司名「华为」，不参与层级与统计）
+- 配置：`GET_ACCOUNT_API_URL`（留空 = 跳过该级兜底）、`GET_ACCOUNT_API_TOKEN`（uiplusToken 头）
+
+### 10. GET /api/design-systems/stats/* —— 打点统计（管理台数据统计页）
+
+统一查询参数：`start` / `end`（日期 `YYYY-MM-DD`，闭区间，缺省不限）。
+口径：预览数=view 事件数；调用量=usage 事件数；人数=DISTINCT account（匿名不计）；
+最近调用时间=MAX(created_at)；软删系统的事件保留但不进统计；部门维度=事件快照 dept1。
+
+| 接口 | 参数 | 返回 |
+|---|---|---|
+| `/stats/summary` | + `search`（按系统名称模糊） | `{ total:{views,usage,users,last_at}, items:[{slug,name,views,usage,users,last_at}] }` —— 每系统一行（无数据补 0）+ 全局汇总（users 为全局 DISTINCT，非各行之和） |
+| `/stats/trend` | + `metric=view\|usage\|users`、`granularity=day\|week\|month` | `{ buckets:[{date,dept1,value}] }` —— 时间桶（周=所在周周一）× 一层部门扁平行，前端透视为堆叠柱状图；users 指标按（桶,部门）DISTINCT |
+| `/stats/dept-share` | + `metric` | `{ items:[{dept1,value}] }` —— 一层部门占比（按值降序，0 值切片不返回） |
+| `/stats/users` | + `search`（工号/名字模糊） | `{ total, items:[{account,nick_name,last_at,views,usage,dept1..4}] }` —— 名字/部门取该账号最新事件快照；匿名事件不生成人员行 |
+
 ### 7a. POST /api/design-systems/{slug}/views —— 预览量自增
 
 **语义**：展示端设计系统详情页**每次加载**调用一次，`views += 1`（与 `/usage` 的外部显式调用不同，

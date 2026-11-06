@@ -106,3 +106,59 @@ export interface OperationLogsParams {
   action?: string
   target_type?: string
 }
+
+// ─────────────── 打点统计（数据统计页，契约 10 号接口组） ───────────────
+
+export type StatsMetric = 'view' | 'usage' | 'users'
+export type StatsGranularity = 'day' | 'week' | 'month'
+
+export interface StatsSummaryItem {
+  slug: string
+  name: string
+  views: number
+  usage: number
+  users: number
+  last_at: string | null
+}
+
+export interface StatsSummaryResp {
+  start: string | null
+  end: string | null
+  total: { views: number; usage: number; users: number; last_at: string | null }
+  items: StatsSummaryItem[]
+}
+
+export interface StatsTrendResp {
+  metric: StatsMetric
+  granularity: StatsGranularity
+  start: string | null
+  end: string | null
+  /** 扁平行：时间桶 × 一层部门（dept1 为空 = 匿名/未知），前端透视为堆叠柱状图 */
+  buckets: { date: string; dept1: string; value: number }[]
+}
+
+export interface StatsDeptShareResp {
+  metric: StatsMetric
+  start: string | null
+  end: string | null
+  items: { dept1: string; value: number }[]
+}
+
+export interface StatsUserItem {
+  account: string
+  nick_name: string
+  last_at: string | null
+  views: number
+  usage: number
+  dept1: string
+  dept2: string
+  dept3: string
+  dept4: string
+}
+
+export interface StatsUsersResp {
+  start: string | null
+  end: string | null
+  total: number
+  items: StatsUserItem[]
+}

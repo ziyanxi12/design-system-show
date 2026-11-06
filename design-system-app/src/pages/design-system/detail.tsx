@@ -2,6 +2,7 @@ import { createEffect, createSignal, on, onCleanup, onMount, For, Show } from "s
 import type { JSX } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { getDsData, faceUrl, authorLabel, type DsData } from "./data"
+import { getEncryptedUserData } from "../../utils/auth"
 import { API_BASE } from "../../config"
 
 const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 10 10" fill="none"><path d="M6 1L2 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -39,11 +40,21 @@ export default function DesignSystemDetail(props: { id: string }): JSX.Element {
 
   onMount(() => {
     window.addEventListener("message", onMessage)
-    // 预览量埋点：每次进入详情页自增一次，fire-and-forget
-    fetch(`${API_BASE}/api/design-systems/${props.id}/views`, { method: "POST" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
-      .then((d: { views?: number }) => { if (typeof d.views === "number") setViews(d.views) })
-      .catch(() => {})
+    // 预览量埋点：每次进入详情页自增一次，fire-and-forget；
+    // 携带 X-User-Data（登录态 userInfo 加密）供统计页聚合人员/部门，无登录态则匿名降级
+    void (async () => {
+      const headers: Record<string, string> = {
+        "octo-vs-token": "octo_vs_7e91e862389139bab49247ba2550f366",
+      }
+      try {
+        const userData = await getEncryptedUserData()
+        if (userData) headers["X-User-Data"] = userData
+      } catch { /* 加密失败 → 匿名 */ }
+      fetch(`${API_BASE}/api/design-systems/${props.id}/views`, { method: "POST", headers })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
+        .then((d: { views?: number }) => { if (typeof d.views === "number") setViews(d.views) })
+        .catch(() => {})
+    })()
   })
   onCleanup(() => window.removeEventListener("message", onMessage))
 

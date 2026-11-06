@@ -69,7 +69,7 @@
     /* 组件目录三级导航：类目（二级菜单，可折叠）→ 组件（三级菜单） */
     .nav-sub .nav-category { display: flex; flex-direction: column; }
     .nav-sub .nav-category .sub-h {
-      height: 30px; padding: 0 12px 0 28px; font-size: 13px; color: var(--text-primary); font-weight: 500;
+      height: 32px; padding: 0 12px 0 32px; font-size: 13px; color: var(--text-primary); font-weight: 500;
       display: flex; align-items: center; background: none; text-align: left; white-space: nowrap;
     }
     .nav-sub .nav-category .sub-h:hover { color: var(--brand); }
@@ -82,7 +82,7 @@
     .nav-sub .nav-category:not(.open) .sub-h .cat-chev { transform: rotate(-90deg); }
     .nav-sub .nav-cat-items { display: none; flex-direction: column; gap: 2px; margin: 2px 0 6px; max-height: 300px; overflow: auto; }
     .nav-sub .nav-category.open .nav-cat-items { display: flex; }
-    .nav-sub .nav-cat-items .sub-l2 { padding-left: 52px; }
+    .nav-sub .nav-cat-items .sub-l2 { height: 32px; padding: 0 12px 0 44px; font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; }
 
     .main { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 24px; padding: 0 0 24px; scrollbar-width: thin; }
     .main::-webkit-scrollbar { width: 6px; }
@@ -197,7 +197,7 @@
     .rules code, .code { font-family: "SF Mono", Menlo, monospace; font-size: 12px; background: rgba(0,0,0,.05); padding: 0 4px; border-radius: 4px; }
 
     /* ---------- 空状态 ---------- */
-    .sec-empty { margin-top: 24px; padding: 40px 24px; border-radius: 16px; border: 1px dashed rgba(0,0,0,.14); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-3); text-align: center; }
+    .sec-empty { margin-top: 24px; padding: 40px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-3); text-align: center; }
     .sec-empty .ei { width: 56px; height: 56px; border-radius: 16px; background: var(--fill-3); display: flex; align-items: center; justify-content: center; color: rgba(0,0,0,.25); margin-bottom: 4px; }
     .sec-empty .ei .ic { width: 26px; height: 26px; }
     .sec-empty .ei .ic svg { width: 22px; height: 22px; }
@@ -480,8 +480,7 @@
       const s = SECTIONS.find(x => x.key === sec);
       return '<div class="sec-label">' + s.label + '</div><div class="sec-title">' + s.label + '</div>' +
         '<div class="sec-empty"><span class="ei">' + icon(s.icon) + '</span>' +
-        '<b>当前设计系统暂无关联内容</b>' +
-        '<span>来源：' + esc(ds.source && ds.source.skill || ds.name) + '。补充' + s.label + '相关内容后，重新同步即可展示。</span></div>';
+        '<b>当前设计系统暂无关联内容</b></div>';
     }
 
     const rulesHtml = rules => rules && rules.length ? '<div class="rules"><h4>' + icon("info") + '使用规则</h4><ul>' + rules.map(r => '<li>' + esc(r).replace(/`([^`]+)`/g, "<code>$1</code>") + '</li>').join("") + '</ul></div>' : "";
@@ -1014,6 +1013,11 @@
       const main = document.getElementById("main");
       let scrollLock = false;
 
+      /* 组件默认展开：一级菜单 + 全部类目（用户可手动折叠，切到其他菜单不打扰展开状态） */
+      const compGrp = nav.querySelector(".nav-grp");
+      if (compGrp) compGrp.classList.add("open");
+      nav.querySelectorAll(".nav-category").forEach(cat => cat.classList.add("open"));
+
       function offsetIn(parent, el) { return el.getBoundingClientRect().top - parent.getBoundingClientRect().top + parent.scrollTop; }
 
       nav.addEventListener("click", e => {
@@ -1047,10 +1051,9 @@
       function setNav(sec, cmp) {
         nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null));
         nav.querySelectorAll("[data-cmp]").forEach(b => b.classList.toggle("on", sec === "components" && Number(b.dataset.cmp) === cmp));
-        /* 滚动高亮到某个组件时，确保它所在的类目分组展开可见 */
+        /* 滚动到组件区时高亮所在类目（sub-h），但不改变类目的展开/折叠状态（用户手动控制） */
         nav.querySelectorAll(".nav-category").forEach(cat => {
           const active = cat.querySelector('[data-cmp].on');
-          cat.classList.toggle("open", !!active);
           const h = cat.querySelector(".sub-h");
           if (h) h.classList.toggle("on", !!active);
         });

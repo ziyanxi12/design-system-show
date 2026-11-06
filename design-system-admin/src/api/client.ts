@@ -14,12 +14,25 @@ import type {
   OperationLog,
   OperationLogsParams,
   OperationLogsResp,
+  StatsDeptShareResp,
+  StatsGranularity,
+  StatsMetric,
+  StatsSummaryResp,
+  StatsTrendResp,
+  StatsUsersResp,
   WhitelistAccount,
   WhitelistListResp,
 } from '../types'
 import type { ZipParseResult } from './zipTypes'
 
 const VS_TOKEN = 'octo_vs_7e91e862389139bab49247ba2550f366'
+
+/** 统计接口查询串（跳过空参数） */
+function statsQs(params: Record<string, string | undefined>): string {
+  const usp = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v) usp.set(k, v) })
+  return usp.toString()
+}
 
 /** zip 上传上限与分片阈值（对齐 api.md 契约） */
 export const MAX_ZIP_BYTES = 200 * 1024 * 1024
@@ -263,6 +276,36 @@ export const api = {
     return request<{ slug: string; usage: number }>(`/api/design-systems/${slug}/usage`, {
       method: 'POST',
     })
+  },
+
+  // ─────────────── 打点统计（契约 10 号接口组，数据统计页） ───────────────
+
+  /** 左表：每系统 预览数/调用量/使用人数/最近调用时间 + 全局汇总行 */
+  getStatsSummary(params: { start?: string; end?: string; search?: string }): Promise<StatsSummaryResp> {
+    return request<StatsSummaryResp>(`/api/design-systems/stats/summary?${statsQs(params)}`)
+  },
+
+  /** 条形图：时间桶（天/周/月）× 一层部门 */
+  getStatsTrend(params: {
+    metric: StatsMetric
+    granularity: StatsGranularity
+    start?: string
+    end?: string
+  }): Promise<StatsTrendResp> {
+    return request<StatsTrendResp>(
+      `/api/design-systems/stats/trend?${new URLSearchParams({ metric: params.metric, granularity: params.granularity, ...(params.start ? { start: params.start } : {}), ...(params.end ? { end: params.end } : {}) }).toString()}`,
+    )
+  },
+
+  /** 扇形图：一层部门占比 */
+  getStatsDeptShare(params: { metric: StatsMetric; start?: string; end?: string }): Promise<StatsDeptShareResp> {
+    const { metric, ...rest } = params
+    return request<StatsDeptShareResp>(`/api/design-systems/stats/dept-share?${statsQs({ metric, ...rest })}`)
+  },
+
+  /** 人员统计表（9 列） */
+  getStatsUsers(params: { start?: string; end?: string; search?: string }): Promise<StatsUsersResp> {
+    return request<StatsUsersResp>(`/api/design-systems/stats/users?${statsQs(params)}`)
   },
 
   /** 操作记录：固定 target_type ∈ (design_system, ds_whitelist)，id 倒序分页 */
