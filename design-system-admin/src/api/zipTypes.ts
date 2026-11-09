@@ -34,6 +34,8 @@ export interface ZipParseResult {
   stats: ZipParseStats
   skill_zip: {
     present: boolean
+    /** 技能名（附件 zip 第一层 SKILL.md frontmatter 的 name；无附件为 null） */
+    skill_name?: string | null
     /** 附件原文件名（DESIGN.md 同级任意 .zip，不强制命名） */
     filename: string | null
     size: number

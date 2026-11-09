@@ -41,6 +41,8 @@ export interface DesignSystemItem extends DesignSystemMeta {
   zip_url?: string | null
   /** 附件（DESIGN.md 同级任意 .zip，保留原文件名）完整下载链接（zip 内无则 null） */
   skill_zip_url?: string | null
+  /** 技能名（附件 zip 第一层 SKILL.md frontmatter 的 name；无附件为 null） */
+  skill_name?: string | null
   /** 创建人 / 最后编辑人（account）及显示名（"昵称 account"，无用户记录时回落 account） */
   created_by: string
   updated_by: string

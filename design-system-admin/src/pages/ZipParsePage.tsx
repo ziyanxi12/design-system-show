@@ -127,7 +127,7 @@ export default function ZipParsePage() {
       }))
       const secs = ((performance.now() - t0) / 1000).toFixed(2)
       console.log(
-        `[zip-parse] 解析成功（${secs}s）：规范 id=${result.stats.slug}，组件 ${result.stats.components} 个，Pattern ${result.stats.patterns} 个，附件 ${result.skill_zip.present ? result.skill_zip.filename : '无'}`,
+        `[zip-parse] 解析成功（${secs}s）：规范 id=${result.stats.slug}，组件 ${result.stats.components} 个，Pattern ${result.stats.patterns} 个，附件 ${result.skill_zip.present ? result.skill_zip.filename : '无'}，技能名 ${result.skill_zip.skill_name ?? '—'}`,
       )
     } catch (e) {
       console.error('[zip-parse] 解析失败：', e instanceof Error ? e.message : e)
@@ -201,6 +201,11 @@ export default function ZipParsePage() {
                       ? `${state.result.skill_zip.filename ?? '附件'}（${(state.result.skill_zip.size / 1024).toFixed(1)}KB）`
                       : 'zip 内无附件（DESIGN.md 同级无 .zip 文件）'}
                   </Typography.Text>
+                  {state.result.skill_zip.present && state.result.skill_zip.skill_name ? (
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      技能名：{state.result.skill_zip.skill_name}
+                    </Typography.Text>
+                  ) : null}
                   {state.result.skill_zip.present && state.result.skill_zip.content_base64 ? (
                     <Typography.Link
                       style={{ fontSize: 12, width: 'fit-content' }}
