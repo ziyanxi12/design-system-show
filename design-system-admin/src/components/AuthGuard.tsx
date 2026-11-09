@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { Button, Result, Spin } from 'antd'
-import { getUserInfo, isSessionExpired, ensureLoginTime, expireLogout, redirectToLogin, redirectToLogout } from '../utils/auth'
+import { getUserInfo, ensureLoginTime, redirectToLogin, redirectToLogout } from '../utils/auth'
 import { checkAuth, type Role } from '../utils/whitelist'
 
 const RoleContext = createContext<Role>(null)
@@ -16,13 +16,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return
     // 正式环境登录页只写 userInfo 不写 loginTime：由管理台补写（仅缺失时），
-    // 必须在过期判断之前，否则 loginTime 缺失会被判为已过期（死循环）
+    // 供后端 DS_LOGIN_TTL_HOURS 过期校验（登录过期判断在后端：API 401 → expireLogout）
     ensureLoginTime()
-    // 24 小时未重新登录 → 过期，清除登录态并跳登录页
-    if (isSessionExpired()) {
-      expireLogout()
-      return
-    }
     checkAuth()
       .then((r) => {
         if (r.allowed) {

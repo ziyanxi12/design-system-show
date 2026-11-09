@@ -1,7 +1,5 @@
 const STORAGE_KEY = 'userInfo'
 const LOGIN_TIME_KEY = 'loginTime'
-/** 登录过期时长：24 小时 */
-const SESSION_EXPIRE_MS = 24 * 60 * 60 * 1000
 
 export interface UserInfo {
   account: string
@@ -30,18 +28,11 @@ export function isLoggedIn(): boolean {
   return getUserInfo() !== null
 }
 
-/** 登录是否已过期（超过 24 小时未重新登录） */
-export function isSessionExpired(): boolean {
-  const loginTime = Number(localStorage.getItem(LOGIN_TIME_KEY))
-  if (!loginTime || Number.isNaN(loginTime)) return true
-  return Date.now() - loginTime > SESSION_EXPIRE_MS
-}
-
 /**
  * 补写登录时间：正式环境统一登录页（sign/index.html）只写 userInfo 不写 loginTime，
- * 由管理台在进入时自己写（仅缺失时写；已有值不覆盖，避免每次刷新续期）——
- * 24 小时过期计时从首次进入管理台起算。须在 isSessionExpired() 之前调用，
- * 否则 loginTime 缺失会被判为已过期 → expireLogout → 跳登录页死循环。
+ * 由管理台在进入时自己写（仅缺失时写；已有值不覆盖，避免每次刷新续期）。
+ * loginTime 不再用于前端判断过期——它随 getEncryptedUserData 塞进 X-User-Data 载荷，
+ * 由后端按 DS_LOGIN_TTL_HOURS（默认 24h）校验，过期返回 401。
  */
 export function ensureLoginTime(): void {
   if (!localStorage.getItem(LOGIN_TIME_KEY)) {
@@ -49,7 +40,7 @@ export function ensureLoginTime(): void {
   }
 }
 
-/** 过期登出：清除登录态后跳登录页（AuthGuard 过期 / API 401 兜底共用） */
+/** 过期登出：清除登录态后跳登录页（后端 401 过期响应触发，见 client.ts） */
 export function expireLogout(): void {
   localStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(LOGIN_TIME_KEY)
@@ -60,7 +51,9 @@ export async function getEncryptedUserData(): Promise<string> {
   const user = getUserInfo()
   if (!user) return ''
   const { encryptUserData } = await import('./crypto')
-  return encryptUserData({ ...user })
+  // loginTime 一并入加密载荷（缺失=0 → 后端判过期）；过期判断完全在后端
+  const loginTime = Number(localStorage.getItem(LOGIN_TIME_KEY))
+  return encryptUserData({ ...user, loginTime })
 }
 
 /** 与 lib-resource-ui 相同：跳统一登录页（同域部署；dev 由 vite 提供 public/signIn/） */
