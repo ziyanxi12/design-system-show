@@ -147,7 +147,7 @@ export default function DesignSystemPage(): JSX.Element {
                             {(a) => (
                               <span class="row">
                                 <img
-                                  src={a.account ? faceUrl(a.account, 48) : "/design-systems/avatar-author.png"}
+                                  src={a.account ? faceUrl(a.account) : "/design-systems/avatar-author.png"}
                                   alt=""
                                 />
                                 {authorLabel(a)}

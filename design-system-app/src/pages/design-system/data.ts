@@ -53,10 +53,10 @@ type ApiItem = {
 
 export type DsLoadState = "loading" | "ready" | "error"
 
-/** 用户头像服务（mock 3091 直连；face 入参 = account 去掉第一个字符） */
+/** 用户头像服务（mock 3091 直连；face 入参 = account 去掉第一个字符；尺寸固定 120，其余值接口会报错） */
 export const FACE_API_BASE = "http://localhost:3091"
-export const faceUrl = (account: string, size = 32): string =>
-  `${FACE_API_BASE}/face/${account.slice(1)}/${size}`
+export const faceUrl = (account: string): string =>
+  `${FACE_API_BASE}/face/${account.slice(1)}/120`
 
 /** 作者显示标签（展示端）：昵称优先回落账号；管理台才显示 nickName(account) 完整格式 */
 export const authorLabel = (a: AuthorEntry): string => {

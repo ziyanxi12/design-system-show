@@ -116,7 +116,7 @@ export default function DesignSystemDetail(props: { id: string }): JSX.Element {
                   <div class="dsd-meta">
                     <span class="faces">
                       <For each={ent().meta.authors ?? []}>
-                        {(a) => <img class="face" src={a.account ? faceUrl(a.account, 48) : "/design-systems/avatar-author.png"} alt={authorLabel(a)} />}
+                        {(a) => <img class="face" src={a.account ? faceUrl(a.account) : "/design-systems/avatar-author.png"} alt={authorLabel(a)} />}
                       </For>
                     </span>
                     <span>{(ent().meta.authors ?? []).map(authorLabel).filter(Boolean).join("、") || "Octo Agent"}</span>

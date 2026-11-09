@@ -19,7 +19,7 @@ GET `/getAccount?keyword=200311`
 
 GET `/face/20031134/120`
 
-- 入参：路径参数 `account`、`size`（固定 120，传其他数字则按该尺寸渲染）
+- 入参：路径参数 `account`、`size`（固定 120，传其他值返回 400）
 - account 规则：getAccount 的 account 去掉第一个字符——`h20031134` → `20031134`、`hhh344` → `hh344`（支持字母数字）
 - 出参：SVG 图片（`Content-Type: image/svg+xml`），背景色由 account 哈希生成，居中显示账号数字
 - 无需鉴权，直接 `<img src="http://localhost:3091/face/20031134/120">`
