@@ -54,6 +54,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // 用户信息查询（USER_INFO_API_URL 协议：?account= 精确查、无鉴权——打点身份完整化用）
+  if (req.method === "GET" && url.pathname === "/getUserInfo") {
+    const account = url.searchParams.get("account") ?? "";
+    const hit = account ? ACCOUNTS.find((item) => item.account === account) : null;
+    send(res, 200, hit
+      ? { content: { account: hit.account, nickName: hit.nickName, dept: hit.dept, deptCode: [] }, errorCode: 0, success: true }
+      : { content: null, errorCode: 404, success: false });
+    return;
+  }
+
   send(res, 404, { detail: "Not Found" });
 });
 

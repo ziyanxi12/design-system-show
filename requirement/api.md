@@ -312,12 +312,16 @@ async function incrementUsage(apiBase, slug) {
 
 ```
 X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddleware 平时 upsert 的缓存）
-    └─仍缺──► GET_ACCOUNT_API_URL 按 account 精确补全（短超时，成功则回写 users 表，
-               同一账号外部服务最多查 1 次） ──仍缺──► 用手头信息降级写事件
+    └─仍缺──► USER_INFO_API_URL 按 account 精确补全（服务端直连、无 cookie/token 依赖、
+               短超时，成功则回写 users 表含 deptCode，同一账号外部服务最多查 1 次）
+               ──仍缺──► 用手头信息降级写事件
 ```
 
+- 打点链的外部查询走 **USER_INFO_API_URL**（`GET ?account=` 免 cookie 协议）：调用方（外部工具/
+  服务端）不会传浏览器登录 cookie，带 cookie 鉴权的人员服务（联想搜索 USER_SEARCH_API_URL 类）
+  服务端无法调用
 - 部门快照口径：**dept1..dept4 = 部门数组的下标 1~4**（dept[0] 为公司名「华为」，不参与层级与统计）
-- 配置：`GET_ACCOUNT_API_URL`（留空 = 跳过该级兜底）、`GET_ACCOUNT_API_TOKEN`（uiplusToken 头）
+- 配置：`USER_INFO_API_URL`（留空 = 跳过该级兜底，事件降级仅 account；与显示名兜底 `resolve_display_names` 共用配置）
 
 ### 10. GET /api/design-systems/stats/* —— 打点统计（管理台数据统计页）
 
@@ -362,8 +366,8 @@ X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddl
 - **完全公开**：免登录、免权限校验（在登录过期豁免清单内，静态路径精确匹配）
 - `slug` 必填（缺失 → 422，对齐 `uploads/init` 的 body 校验；不存在 → 404）；`account` 与有效
   `X-User-Data` **至少其一**（否则 400），同时携带时 **X-User-Data 优先**
-- **身份补全**（后端 resolve 链，事件写入前完成）：`account` → users 表缓存 → getAccount 人员服务
-  （`GET_ACCOUNT_API_URL`）→ 回写缓存（同一账号外部服务最多查 1 次）；
+- **身份补全**（后端 resolve 链，事件写入前完成）：`account` → users 表缓存 → USER_INFO_API_URL
+  人员服务（`?account=` 免 cookie 直连）→ 回写缓存（同一账号外部服务最多查 1 次）；
   查无此人**降级照写**（account 入库、nickName/dept 留空，绝不丢打点）
 - 响应：`{"slug": "ict-pc", "usage": 5}`
 
@@ -395,7 +399,7 @@ await fetch(`${apiBase}/api/design-systems/usage/report`, {
 
 **行为**：
 - 候选：account 非空且（nick_name 或 dept1 为空）的事件 → 按账号去重（匿名事件永不触碰）
-- 逐账号走 resolve 链：users 表缓存 → getAccount 人员服务（`GET_ACCOUNT_API_URL`）→ 回写缓存
+- 逐账号走 resolve 链：users 表缓存 → USER_INFO_API_URL 人员服务（`?account=` 免 cookie 直连）→ 回写缓存
 - **只补空**：逐字段填充，事件内已有值的字段一律不动（历史快照不修订；人员转部门不影响历史统计）
 - 查不到的账号进 `unresolved` 名单，事件原样保留（下次再补）
 - **完全公开**（豁免登录过期网关）、幂等：已补全的事件不再进候选
