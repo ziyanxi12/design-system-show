@@ -327,7 +327,9 @@ X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddl
 
 统一查询参数：`start` / `end`（日期 `YYYY-MM-DD`，闭区间，缺省不限）。
 口径：预览数=view 事件数；调用量=usage 事件数；人数=DISTINCT account（匿名不计）；
-最近调用时间=MAX(created_at)；软删系统的事件保留但不进统计；部门维度=事件快照 dept1。
+最近调用时间=MAX(created_at)；软删系统的事件保留但不进统计（**四个接口口径一致**：排除统一在
+事件查询入口 `_range_query` 实现——summary 行与汇总 / trend / dept-share / users 均不含软删事件）；
+部门维度=事件快照 dept1。
 
 | 接口 | 参数 | 返回 |
 |---|---|---|
