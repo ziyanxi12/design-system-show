@@ -12,9 +12,13 @@
 > **usage 不从 MD 派生**（md 里的 `usage: 143` 不允许直接使用）：新增恒 0，修正通道仅表单字段。
 > 大文件分片：>20MB 走 `init → chunks → complete`（5MB/片，前端 console 打印分片日志）。
 >
-> 请求头：`octo-vs-token` + `X-User-Data`（AES-CBC 加密 `userInfo + loginTime`）；设计系统管理端点按
+> 请求头：`X-User-Data`（AES-CBC 加密 `userInfo + loginTime`）；设计系统管理端点按
 > `DS_LOGIN_TTL_HOURS`（默认 24h）校验登录过期，超时/缺失 → `401 {"detail":"登录已过期，请重新登录"}`
-> ——豁免清单仅 `GET /api/design-systems`（列表）与 `POST /{slug}/views`（7a 预览打点）；
+> ——豁免清单仅 `GET /api/design-systems`（列表）、`POST /{slug}/views`（7a 预览打点）、
+> `POST /api/design-systems/usage/report`（7b 免登录态调用量上报）与
+> `POST /api/design-systems/events/refresh-identity`（7c 打点事件用户信息补全）。
+> `octo-vs-token` 仅 lib-resource 原有模块需要（`/api/resources`、`/api/export`、`/api/vector/*` 的
+> app_id 校验），**设计系统模块不校验、无需携带**；
 > 人员搜索走独立服务 `GET /getAccount?keyword=`（mock 3090，需 `uiplusToken` 头），头像走 `GET /face/{account去首字符}/{size}`（mock 3091），见 mock-api/api.md。
 >
 > 生产 nginx：`client_max_body_size` 需 ≥ 25m（分片单片 5MB + 余量；直传路径 200MB 上限走分片，不受此限）。
@@ -22,7 +26,7 @@
 ## 通用约定
 
 - 路由前缀：`/api/design-systems`（生产经 nginx `/aaa/` 反代剥前缀，与 lib-resource-ui 一致）
-- 请求头：`octo-vs-token`（固定值）+ `X-User-Data`（AES-CBC 加密的 userInfo，同 lib-resource-ui）；`created_by/updated_by` 取自解密结果
+- 请求头：`X-User-Data`（AES-CBC 加密的 userInfo + loginTime，同 lib-resource-ui 协议）；`created_by/updated_by` 取自解密结果。`octo-vs-token` 在本模块**不校验**（仅 lib-resource 原有模块的 app_id 校验需要，可省略）
 - 错误响应：`{"detail": "错误描述"}`，状态码 400（校验失败）/ 404（不存在）/ 413（超限）；~~409（slug 重复）~~ **v2 移除**（slug 后端随机分配，结构上不可能冲突；同一 source_slug 可共存多条记录）
 - 时间格式：`design_systems` 表相关为 ISO 8601；白名单与操作记录接口返回 epoch 毫秒（见第 8/9 节）
 
@@ -249,7 +253,8 @@ MD id 变化只更新 `source_slug`（slug 与落盘目录不动，操作日志�
 
 **响应**：`{"slug": "text-to-ui", "usage": 4}`
 
-**调用方式（JS，可独立使用）**：
+**调用方式（JS，可独立使用，适用于有登录态的调用方）**：
+> 调用方**无登录态**（服务端/工具侧代码、拿不到 userInfo）时走 **7b**（传 account 即可，见下节）。
 
 ```js
 // ── X-User-Data 构造（AES-256-CBC；密钥 = 后端 AUTH_AES_KEY = 前端 VITE_AUTH_AES_KEY，32 字节 base64）──
@@ -281,7 +286,6 @@ async function incrementUsage(apiBase, slug) {
   const res = await fetch(`${apiBase}/api/design-systems/${slug}/usage`, {
     method: 'POST',
     headers: {
-      'octo-vs-token': 'octo_vs_7e91e862389139bab49247ba2550f366',
       'X-User-Data': await encryptUserData({
         ...user, loginTime: Number(localStorage.getItem('loginTime')),
       }),
@@ -343,6 +347,67 @@ X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddl
 - slug 不存在 → 404
 
 **响应**：`{"slug": "h-design", "views": 1287}`
+
+### 7b. POST /api/design-systems/usage/report —— 调用量上报（免登录态，传 account）
+
+**语义**：与 7 号逻辑**完全一致**（`usage += 1` + 同事务打点事件），面向**无登录态的调用方**
+（服务端 / 工具侧代码）：`slug` 与 `account` 放消息体，用户信息由**后端自行查询补全**后入库。
+
+**请求**：`Content-Type: application/json`
+
+```json
+{"slug": "ict-pc", "account": "h20031134"}
+```
+
+- **完全公开**：免登录、免权限校验（在登录过期豁免清单内，静态路径精确匹配）
+- `slug` 必填（缺失 → 422，对齐 `uploads/init` 的 body 校验；不存在 → 404）；`account` 与有效
+  `X-User-Data` **至少其一**（否则 400），同时携带时 **X-User-Data 优先**
+- **身份补全**（后端 resolve 链，事件写入前完成）：`account` → users 表缓存 → getAccount 人员服务
+  （`GET_ACCOUNT_API_URL`）→ 回写缓存（同一账号外部服务最多查 1 次）；
+  查无此人**降级照写**（account 入库、nickName/dept 留空，绝不丢打点）
+- 响应：`{"slug": "ict-pc", "usage": 5}`
+
+**调用方式（JS，无登录态一行搞定）**：
+
+```js
+await fetch(`${apiBase}/api/design-systems/usage/report`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ slug, account }),
+})
+```
+
+- `apiBase` 同域传 `''`（走 /api 反代），跨域传后端完整地址（CORS 全开）
+- slug 从列表接口 `GET /api/design-systems` 的 `item.slug` 获取
+
+### 7c. POST /api/design-systems/events/refresh-identity —— 打点事件用户信息补全（公开维护）
+
+**语义**：为「身份不完整」的打点事件**补全用户信息**（`ds_usage_events` 的 nick_name / dept1..4）。
+典型场景：7b 上报时 account 查无此人（users 表 + getAccount 都没命中）→ 事件按降级语义照写
+（account 入库、昵称部门留空，**绝不因查不到人而跳过**）——等人员信息可查后调本接口批量补全。
+
+**请求**：`Content-Type: application/json`
+
+```json
+{}                                          // 全表扫描身份不完整的事件
+{"accounts": ["ghost-404", "h20031134"]}    // 或只处理指定账号
+```
+
+**行为**：
+- 候选：account 非空且（nick_name 或 dept1 为空）的事件 → 按账号去重（匿名事件永不触碰）
+- 逐账号走 resolve 链：users 表缓存 → getAccount 人员服务（`GET_ACCOUNT_API_URL`）→ 回写缓存
+- **只补空**：逐字段填充，事件内已有值的字段一律不动（历史快照不修订；人员转部门不影响历史统计）
+- 查不到的账号进 `unresolved` 名单，事件原样保留（下次再补）
+- **完全公开**（豁免登录过期网关）、幂等：已补全的事件不再进候选
+
+**响应**：
+
+```json
+{"accounts_total": 3, "resolved": 2, "unresolved": ["ghost-404"], "events_updated": 5}
+```
+
+- 补全后统计页（10 号组）立即受益：`stats/users` 取该账号最新事件快照，昵称/部门即刻显示
+- 未解析账号重复调用会再查一次 getAccount（短超时 2s，失败降级不丢数据）
 
 ## 8. 设计系统白名单（独立于原 /api/whitelist，账号与开关互不影响）
 
