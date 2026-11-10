@@ -12,7 +12,10 @@
 > **usage 不从 MD 派生**（md 里的 `usage: 143` 不允许直接使用）：新增恒 0，修正通道仅表单字段。
 > 大文件分片：>20MB 走 `init → chunks → complete`（5MB/片，前端 console 打印分片日志）。
 >
-> 请求头：`octo-vs-token` + `X-User-Data`（AES-CBC 加密 userInfo）；人员搜索走独立服务 `GET /getAccount?keyword=`（mock 3090，需 `uiplusToken` 头），头像走 `GET /face/{account去首字符}/{size}`（mock 3091），见 mock-api/api.md。
+> 请求头：`octo-vs-token` + `X-User-Data`（AES-CBC 加密 `userInfo + loginTime`）；设计系统管理端点按
+> `DS_LOGIN_TTL_HOURS`（默认 24h）校验登录过期，超时/缺失 → `401 {"detail":"登录已过期，请重新登录"}`
+> ——豁免清单仅 `GET /api/design-systems`（列表）与 `POST /{slug}/views`（7a 预览打点）；
+> 人员搜索走独立服务 `GET /getAccount?keyword=`（mock 3090，需 `uiplusToken` 头），头像走 `GET /face/{account去首字符}/{size}`（mock 3091），见 mock-api/api.md。
 >
 > 生产 nginx：`client_max_body_size` 需 ≥ 25m（分片单片 5MB + 余量；直传路径 200MB 上限走分片，不受此限）。
 
@@ -234,6 +237,11 @@ MD id 变化只更新 `source_slug`（slug 与落盘目录不动，操作日志�
 **语义**：该设计系统被调用/使用一次记一次。**调用方**：使用方（如 Octo Design 或其他服务）显式调用——
 展示端/管理台 UI **不会**自动触发；手动修正调用量走接口 4 的 `usage` 字段。
 
+**鉴权**：`X-User-Data` **必须携带**（与 7a 的匿名豁免不同）——本接口不在登录过期豁免清单，
+载荷须含 `loginTime` 且距今未超 `DS_LOGIN_TTL_HOURS`（默认 24h），否则
+`401 {"detail":"登录已过期，请重新登录"}`；携带身份的同时，打点事件快照 account/nickName/dept
+供统计页按人/部门聚合。
+
 **行为**：
 - 每次调用 `usage += 1`，SQL 端原子自增（并发安全）
 - 高频调用：不写操作日志；`updated_at` 保持不变（其语义是内容/管理字段更新时间）
@@ -241,12 +249,59 @@ MD id 变化只更新 `source_slug`（slug 与落盘目录不动，操作日志�
 
 **响应**：`{"slug": "text-to-ui", "usage": 4}`
 
+**调用方式（JS，可独立使用）**：
+
+```js
+// ── X-User-Data 构造（AES-256-CBC；密钥 = 后端 AUTH_AES_KEY = 前端 VITE_AUTH_AES_KEY，32 字节 base64）──
+const AES_KEY_B64 = '<AUTH_AES_KEY>'
+
+let _key
+async function getKey() {
+  if (_key) return _key
+  const raw = Uint8Array.from(atob(AES_KEY_B64), c => c.charCodeAt(0))
+  _key = await crypto.subtle.importKey('raw', raw, { name: 'AES-CBC' }, false, ['encrypt'])
+  return _key
+}
+async function encryptUserData(payload) {
+  const key = await getKey()
+  const iv = crypto.getRandomValues(new Uint8Array(16))
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-CBC', iv }, key, new TextEncoder().encode(JSON.stringify(payload)))
+  const out = new Uint8Array(16 + ct.byteLength)
+  out.set(iv); out.set(new Uint8Array(ct), 16)
+  return btoa(String.fromCharCode(...out)) // Base64(IV(16) + 密文)
+}
+
+// ── 调用量自增：apiBase 同域传 ''（走 /api 反代），跨域传后端地址（如 http://localhost:8009）──
+async function incrementUsage(apiBase, slug) {
+  const user = JSON.parse(localStorage.getItem('userInfo') || 'null') // 统一登录门户写入
+  if (!user) throw new Error('未登录')
+  if (!localStorage.getItem('loginTime'))                             // 缺失时补写一次（同管理台 ensureLoginTime 语义）
+    localStorage.setItem('loginTime', String(Date.now()))
+  const res = await fetch(`${apiBase}/api/design-systems/${slug}/usage`, {
+    method: 'POST',
+    headers: {
+      'octo-vs-token': 'octo_vs_7e91e862389139bab49247ba2550f366',
+      'X-User-Data': await encryptUserData({
+        ...user, loginTime: Number(localStorage.getItem('loginTime')),
+      }),
+    },
+  })
+  if (res.status === 401) throw new Error('登录已过期（24h），请重新登录后再上报')
+  return res.json() // → {"slug": "...", "usage": 新值}
+}
+```
+
+- Node ≥ 18：`crypto.subtle` 全局可用，`atob/btoa` 换成 `Buffer.from(s,'base64')` / `Buffer.from(bytes).toString('base64')`
+- 收到 401 = loginTime 超 24h：重走统一门户登录（localStorage 的 userInfo / loginTime 刷新）后恢复上报
+- 后端 CORS 全开，跨域直连无需代理；OPTIONS 预检已放行
+
 **打点事件**：7/7a 两个自增接口同时向 `ds_usage_events` 写入一行打点事件（与列自增同事务）：
 
 | 列 | 说明 |
 |---|---|
 | slug / event_type | 设计系统 + view（预览）/ usage（调用） |
-| account / nick_name / dept1..4 | 操作人快照（见下方「打点身份完整化」）；匿名调用 account 为空 |
+| account / nick_name / dept1..4 | 操作人快照（见下方「打点身份完整化」）；匿名调用 account 为空（匿名仅 7a 豁免可发生；7 须登录态） |
 | created_at | 打点时间（统计页时间序列 / 最近调用的来源） |
 
 **打点身份完整化**（事件写入前，失败静默降级、绝不丢打点）：
@@ -277,6 +332,9 @@ X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddl
 
 **语义**：展示端设计系统详情页**每次加载**调用一次，`views += 1`（与 `/usage` 的外部显式调用不同，
 本接口由展示端前端自动触发，用于「调用量旁边展示预览量」的需求）。
+
+**鉴权**：**豁免**登录过期校验（在豁免清单内）——匿名可调（事件归「未知」）；已登录则携带
+`X-User-Data`，事件快照归属本人。
 
 **行为**：
 
