@@ -17,6 +17,9 @@ export default function App() {
         token: {
           colorPrimary: '#6366f1',
           borderRadius: 8,
+          fontSize: 12,
+          fontSizeSM: 12,
+          fontSizeLG: 16,
           fontFamily:
             "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
         },

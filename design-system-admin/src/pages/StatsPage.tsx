@@ -10,7 +10,7 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import {
   Button, Card, Col, DatePicker, Empty, Input, Radio, Row, Segmented, Space, Spin, Table, Tooltip, message,
 } from 'antd'
-import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { DownloadOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { Column, Pie } from '@ant-design/charts'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { Dayjs } from 'dayjs'
@@ -30,18 +30,44 @@ const GRANULARITY_OPTIONS: { value: StatsGranularity; label: string }[] = [
   { value: 'month', label: '按月' },
 ]
 const UNKNOWN_DEPT = '未知部门'
+const VISIBLE_BARS = 11
+const BAR_WIDTH = 10
+const LEGEND_PAGE_SIZE = 6
 
-/** 部门配色（G2 默认色板）：柱状图 / 扇形图 / 自绘图例共用，保证同部门同色 */
-const PALETTE = ['#5B8FF9', '#5AD8A6', '#5D7092', '#F6BD16', '#E8684A', '#6DC8EC', '#9270CA', '#FF9D4D', '#269A99', '#FF99C3']
+/** 部门配色（ECharts 默认色板）：柱状图 / 扇形图 / 图例共用，保证同部门同色 */
+const PALETTE = ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC']
 
 const fmtTime = (s: string | null) => (s ? dayjs(s).format('YYYY-MM-DD HH:mm') : '—')
 
 /* ─────────────── 条形图（柱状形态）：横轴日期、纵轴数量，一层部门堆叠 ─────────────── */
 const TrendBar = memo(({ data, deptDomain }: { data: StatsTrendResp['buckets']; deptDomain: string[] }) => {
-  const rows = useMemo(
-    () => data.map((b) => ({ date: b.date, dept1: b.dept1 || UNKNOWN_DEPT, value: b.value })),
-    [data],
-  )
+  const rows = useMemo(() => {
+    const groups = new Map<string, { date: string; dept1: string; value: number }[]>()
+    for (const b of data) {
+      const row = { date: b.date, dept1: b.dept1 || UNKNOWN_DEPT, value: b.value }
+      const g = groups.get(b.date)
+      if (g) g.push(row)
+      else groups.set(b.date, [row])
+    }
+    const out: { date: string; dept1: string; value: number; total: number }[] = []
+    for (const g of groups.values()) {
+      const total = g.reduce((s, r) => s + r.value, 0)
+      for (const r of g) out.push({ ...r, total })
+    }
+    return out
+  }, [data])
+  const dates = useMemo(() => [...new Set(rows.map((r) => r.date))], [rows])
+  /* y 轴上限：最大总数 + max(2, 20%) 余量，向上取整到美观阶梯（1/1.2/1.5/2/2.5/3/4/5/6/8/10 × 10^k），
+     保证柱顶标签始终在绘图区内 */
+  const yMax = (() => {
+    const maxTotal = Math.max(...rows.map((r) => r.total), 0)
+    const v = maxTotal + Math.max(2, maxTotal * 0.2)
+    const exp = Math.floor(Math.log10(v || 1))
+    const frac = v / 10 ** exp
+    const ladder = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+    const nice = ladder.find((n) => n >= frac - 1e-9) ?? 10
+    return nice * 10 ** exp
+  })()
   if (!rows.length) return <Empty description="该时间范围内暂无打点数据" style={{ margin: '48px 0' }} />
   return (
     <Column
@@ -49,63 +75,119 @@ const TrendBar = memo(({ data, deptDomain }: { data: StatsTrendResp['buckets']; 
       xField="date"
       yField="value"
       colorField="dept1"
-      isStack
+      stack
+      animate={false}
       height={252}
-      scale={{ color: { range: PALETTE, domain: deptDomain } }}
-      axis={{ x: { labelAutoHide: true, labelAutoRotate: false } }}
-      legend={{ color: { title: false, position: 'right', rowPadding: 4 } }}
-      tooltip={{ items: [{ name: (d: { dept1: string }) => d.dept1, value: (d: { value: number }) => d.value }] }}
+      paddingTop={30}
+      scale={{ y: { domainMax: yMax }, x: { paddingInner: 0.8, paddingOuter: 0.25 }, color: { range: PALETTE, domain: deptDomain } }}
+      style={{ minWidth: BAR_WIDTH, maxWidth: BAR_WIDTH }}
+      axis={{ x: { labelAutoHide: true, labelAutoRotate: false, labelFormatter: (d: string) => d.slice(5), labelFontSize: 10 } }}
+      scrollbar={
+        dates.length > VISIBLE_BARS
+          ? { x: { ratio: VISIBLE_BARS / dates.length, value: 1 } }
+          : false
+      }
+      legend={false}
+      interaction={{ elementHighlight: false }}
+      label={{
+        text: (d: { date: string; total: number }, i: number, arr: { date: string }[]) =>
+          (i === arr.length - 1 || arr[i + 1].date !== d.date ? `${d.total}` : ''),
+        textBaseline: 'bottom',
+      }}
+      tooltip={{ items: [(d: { dept1: string; value: number }) => ({ name: d.dept1, value: d.value })] }}
     />
   )
 })
 
-/* ─────────────── 扇形图：一层部门占比（自绘图例置右上角，颜色与扇区一致） ─────────────── */
+/* ─────────────── 扇形图：一层部门占比（左侧饼图 + 右侧纵向分页图例） ─────────────── */
 const DeptPie = memo(({ data, deptDomain }: { data: StatsDeptShareResp['items']; deptDomain: string[] }) => {
   const rows = useMemo(
     () => data.map((i) => ({ dept1: i.dept1 || UNKNOWN_DEPT, value: i.value })),
     [data],
   )
+  const [legendPage, setLegendPage] = useState(0)
+  useEffect(() => { setLegendPage(0) }, [rows])
+  /** 图例列固定宽度：按全部部门名实测最大文本宽（canvas measureText），
+      翻页时列宽稳定、饼图容器宽度恒定不偏移 */
+  const legendWidth = useMemo(() => {
+    const ctx = document.createElement('canvas').getContext('2d')
+    if (!ctx) return 150
+    ctx.font = '11px -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+    const maxText = rows.reduce((m, r) => Math.max(m, ctx.measureText(r.dept1).width), 0)
+    return Math.ceil(maxText) + 16 // 色块 8 + marginRight 4 + 余量 4
+  }, [rows])
+  const pageCount = Math.ceil(rows.length / LEGEND_PAGE_SIZE)
   if (!rows.length || rows.every((d) => d.value === 0)) {
     return <Empty description="该时间范围内暂无打点数据" style={{ margin: '48px 0' }} />
   }
+  const visible = rows.slice(legendPage * LEGEND_PAGE_SIZE, (legendPage + 1) * LEGEND_PAGE_SIZE)
+  const total = rows.reduce((s, r) => s + r.value, 0) || 1
+  const pct = (v: number) => `${((v / total) * 100).toFixed(1)}%`
   return (
-    <div style={{ position: 'relative' }}>
-      {/* 图例：右上角（G2 内置 top-right 在窄容器下不可控，改为自绘，保证位置与配色） */}
-      <div
-        style={{
-          position: 'absolute', top: 0, right: 0, zIndex: 1,
-          display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end',
-          gap: '2px 10px', maxWidth: '62%', fontSize: 11, lineHeight: '16px',
-          color: 'rgba(0,0,0,.65)',
-        }}
-      >
-        {rows.map((r) => {
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* 饼图：左侧，容器收窄后自动缩小（右侧让位图例） */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Pie
+          data={rows}
+          angleField="value"
+          colorField="dept1"
+          height={252}
+          radius={0.5}
+          innerRadius={0.3}
+          scale={{ color: { range: PALETTE, domain: deptDomain } }}
+          label={{
+            text: (d: { value: number }) => pct(d.value),
+            position: 'outside',
+            connectorLength: 10,
+            connectorLength2: 5,
+            fontSize: 12,
+            transform: [{ type: 'overlapDodgeY' }],
+          }}
+          legend={false}
+          tooltip={{ items: [(d: { dept1: string; value: number }) => ({ name: d.dept1, value: `${d.value} (${pct(d.value)})` })] }}
+        />
+      </div>
+      {/* 图例：右侧纵向列表，每页 6 项，名称超长省略 */}
+      <div style={{ width: legendWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+        {visible.map((r) => {
           const idx = deptDomain.indexOf(r.dept1)
           return (
-            <span key={r.dept1} title={`${r.value} 次`}>
+            <div
+              key={r.dept1}
+              title={`${r.value} 次`}
+              style={{ display: 'flex', alignItems: 'center', fontSize: 12, lineHeight: '20px', color: 'rgba(0,0,0,.65)' }}
+            >
               <i
                 style={{
                   display: 'inline-block', width: 8, height: 8, borderRadius: 2,
                   background: PALETTE[idx >= 0 ? idx % PALETTE.length : PALETTE.length - 1],
-                  marginRight: 4, verticalAlign: 'baseline',
+                  marginRight: 4, flexShrink: 0,
                 }}
               />
-              {r.dept1}
-            </span>
+              <span style={{ whiteSpace: 'nowrap' }}>{r.dept1}</span>
+            </div>
           )
         })}
+        {pageCount > 1 && (
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <Button
+              size="small"
+              type="text"
+              icon={<LeftOutlined />}
+              disabled={legendPage === 0}
+              onClick={() => setLegendPage((p) => p - 1)}
+            />
+            <span style={{ fontSize: 12, color: 'rgba(0,0,0,.45)' }}>{legendPage + 1} / {pageCount}</span>
+            <Button
+              size="small"
+              type="text"
+              icon={<RightOutlined />}
+              disabled={legendPage === pageCount - 1}
+              onClick={() => setLegendPage((p) => p + 1)}
+            />
+          </div>
+        )}
       </div>
-      <Pie
-        data={rows}
-        angleField="value"
-        colorField="dept1"
-        height={252}
-        innerRadius={0.55}
-        scale={{ color: { range: PALETTE, domain: deptDomain } }}
-        label={false}
-        legend={false}
-        tooltip={{ items: [{ name: (d: { dept1: string }) => d.dept1, value: (d: { value: number }) => d.value }] }}
-      />
     </div>
   )
 })
@@ -238,7 +320,7 @@ const numSorter = (get: (r: StatsSummaryItem) => number) => (a: StatsSummaryItem
         {/* ── 左 1/3：统计范围 + 名称搜索（同一行）+ 系统表 ── */}
         <Card size="small" style={{ width: '33.33%', flexShrink: 0 }} styles={{ body: { padding: 12 } }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <span style={{ color: 'rgba(0,0,0,.45)', fontSize: 13, flexShrink: 0 }}>统计范围</span>
+            <span style={{ color: 'rgba(0,0,0,.45)', fontSize: 12, flexShrink: 0 }}>统计范围</span>
             <DatePicker.RangePicker
               size="small"
               style={{ flex: 1, minWidth: 190 }}
@@ -285,9 +367,9 @@ const numSorter = (get: (r: StatsSummaryItem) => number) => (a: StatsSummaryItem
             }
           >
             <Row gutter={16}>
-              <Col span={15}>
+              <Col flex="3" style={{ minWidth: 0 }}>
                 <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ color: 'rgba(0,0,0,.45)', fontSize: 13 }}>
+                  <span style={{ color: 'rgba(0,0,0,.45)', fontSize: 12 }}>
                     {METRIC_OPTIONS.find((m) => m.value === metric)?.label}统计 · 一层部门
                   </span>
                   <Segmented
@@ -299,8 +381,8 @@ const numSorter = (get: (r: StatsSummaryItem) => number) => (a: StatsSummaryItem
                 </Space>
                 <TrendBar data={trend} deptDomain={deptDomain} />
               </Col>
-              <Col span={9}>
-                <div style={{ color: 'rgba(0,0,0,.45)', fontSize: 13, marginBottom: 4 }}>
+              <Col flex="2" style={{ minWidth: 0 }}>
+                <div style={{ color: 'rgba(0,0,0,.45)', fontSize: 12, marginBottom: 4 }}>
                   {METRIC_OPTIONS.find((m) => m.value === metric)?.label} · 一层部门占比
                 </div>
                 <DeptPie data={deptShare} deptDomain={deptDomain} />
