@@ -103,7 +103,7 @@ export default function ZipParsePage() {
   const handleFile = async (f: File) => {
     const ext = (f.name.split('.').pop() || '').toLowerCase()
     if (ext !== 'zip') {
-      message.error('仅支持解析 zip 包（DESIGN.md + assets + 附件 .zip）')
+      message.error('仅支持解析 zip 包（DESIGN.md + assets + 附件 .zip + tokens.json）')
       return
     }
     if (f.size > 200 * 1024 * 1024) {
@@ -127,7 +127,7 @@ export default function ZipParsePage() {
       }))
       const secs = ((performance.now() - t0) / 1000).toFixed(2)
       console.log(
-        `[zip-parse] 解析成功（${secs}s）：规范 id=${result.stats.slug}，组件 ${result.stats.components} 个，Pattern ${result.stats.patterns} 个，附件 ${result.skill_zip.present ? result.skill_zip.filename : '无'}，技能名 ${result.skill_zip.skill_name ?? '—'}`,
+        `[zip-parse] 解析成功（${secs}s）：规范名=${result.stats.name || '—'}，组件 ${result.stats.components} 个，Pattern ${result.stats.patterns} 个，附件 ${result.skill_zip.present ? result.skill_zip.filename : '无'}，技能名 ${result.skill_zip.skill_name ?? '—'}`,
       )
     } catch (e) {
       console.error('[zip-parse] 解析失败：', e instanceof Error ? e.message : e)
@@ -168,7 +168,7 @@ export default function ZipParsePage() {
           <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
             点击或拖拽 zip 包解析预览
             <br />
-            DESIGN.md + assets + 任意名 .zip 附件
+            DESIGN.md + assets + 附件 .zip + tokens.json
           </div>
         </Upload.Dragger>
 

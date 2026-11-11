@@ -4,13 +4,17 @@
 > 后端：在 `lib-resource-service` 中新增 `routers/design_systems.py` 实现，存储走 `FILE_ROOT_DIR`
 > （本地 `./storage`，生产 `/data/resource`），文件相对路径 `design-systems/{slug}/…`
 >
-> **v2 变更（requirement/1.md）**：上传物从 DESIGN.md 改为 **zip 包**（octo-design-zip/1）：
-> `DESIGN.md`（展示数据，服务端解析）+ `assets/`（components、patterns 递归目录到 html，
-> html 文件名 = 组件名）+ 附件（DESIGN.md 同级**任意 .zip**，不强制命名，保留原文件名可下载）。
-> **slug 由后端分配**（8 位随机 `[a-z0-9]`，API 路径/落盘目录/静态 URL），
-> MD frontmatter 的 id 原样保留在 `source_slug`（不唯一，允许重复；**id 可缺失**——缺失回落 slug，
-> 不校验格式，仅作展示/搜索/多版本追溯）——同 id 重传不再 409。
-> **usage 不从 MD 派生**（md 里的 `usage: 143` 不允许直接使用）：新增恒 0，修正通道仅表单字段。
+> **v3 变更**：上传物为 **zip 包**（octo-design-zip/2，四件套）：
+> `DESIGN.md`（**原文原样**进概览 `overview.markdown`，模板 markdown 渲染，不再机器解析）
+> + `assets/`（components、patterns 递归目录到 html，html 文件名 = 组件名）
+> + 附件（DESIGN.md 同级**任意 .zip**，不强制命名，保留原文件名可下载）
+> + **`tokens.json`（唯一数据源）**：分组结构（color/radius/shadow/size/fontScale/
+> fontScaleRegular/opacity/other/type）**原样并入** design-system.json；非法 JSON → 400，
+> 分组缺失 → 模板空态。
+> **slug 由后端分配**（8 位随机 `[a-z0-9]`，API 路径/落盘目录/静态 URL）；
+> `source_slug` = tokens.json 的 `id`（预留，现无此字段 → 恒 = slug）。
+> **name 来源**：表单 → `tokens.json.name` → slug。
+> **usage 不从任何文件派生**：新增恒 0，修正通道仅表单字段。
 > 大文件分片：>20MB 走 `init → chunks → complete`（5MB/片，前端 console 打印分片日志）。
 >
 > 请求头：`X-User-Data`（AES-CBC 加密 `userInfo + loginTime`）；设计系统管理端点按
@@ -111,7 +115,7 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
   `file_size` 为上传的 **zip 原件**大小（旧 MD 数据为 MD 大小）
 - `json_url` / `design_md_url` / `zip_url` / `skill_zip_url`：design-system.json（服务端解析产物，展示端数据源）、
   zip 内提取的 DESIGN.md 原件、**zip 原件**、**附件**（DESIGN.md 同级任意 .zip，保留原文件名）的可访问 URL；
-  `skill_name`：技能名 = 附件 zip 第一层 SKILL.md frontmatter 的 `name`（附件为三件套必选项；存量旧数据无附件时为 null）；
+  `skill_name`：技能名 = 附件 zip 第一层 SKILL.md frontmatter 的 `name`（附件为四件套必选项；存量旧数据无附件时为 null）；
   当前部署约定为**相对路径**（`PUBLIC_ORIGIN` 置空 → `/static/...`）：本地 dev 走前端 vite 代理
   （`/api`、`/static` 直通 8009，纯同源无 CORS 依赖）；生产由 nginx 同域配置 `/api` 与 `/static` 直通后端。
   管理台文件行展示/下载的主文件是 source.zip；无 zip 的旧数据 `zip_url` 为 null（回落 DESIGN.md → JSON）
@@ -142,20 +146,22 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
 2. zip 安全校验（slip / bomb / 条目数，见「zip 包格式」节）；**同名冲突条目**（同名/大小写变体
    既出现目录又出现文件，如 `skill.zip/` + `skill.zip` 或 `Assets/` + `assets`）→ 400
    「zip 内存在同名冲突条目：…」——否则解压落盘会以未捕获异常 500
-3. **三件套必须齐全**（根级或唯一包裹目录内，缺任一 → 400 **一次性列全缺失项**）：
-   `DESIGN.md` / `assets/` 目录（目录条目存在即放行，可为空）/ 附件 `.zip`（DESIGN.md 同级，不强制命名）；
-   三件套之外的文件与目录**丢弃不落盘、不报错**（服务端 info 日志打印丢弃清单）
+3. **四件套必须齐全**（根级或唯一包裹目录内，缺任一 → 400 **一次性列全缺失项**）：
+   `DESIGN.md` / `assets/` 目录（目录条目存在即放行，可为空）/ 附件 `.zip`（DESIGN.md 同级，不强制命名）
+   / **`tokens.json`**（DESIGN.md 同级，文件名固定，**唯一数据源**）；
+   四件套之外的文件与目录**丢弃不落盘、不报错**（服务端 info 日志打印丢弃清单）
+3a. **tokens.json 硬校验**：非法 JSON → 400「tokens.json 不是合法 JSON：…」；顶层非 JSON 对象 → 400；
+    **分组结构零校验**（color/… 缺失 → 模板渲染空态）
 4. 附件文件名与系统保留文件（`source.zip` / `source.md` / `design-system.json`，大小写不敏感）冲突 → 400
 5. `cover_file` / `icon_file` 超 2MB / 类型不符 → 400
 6. 附件须为合法 skill 包：附件 zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），
    且 frontmatter `name` 字段非空、≤255 字符；否则 400
 7. zip 超 200MB → **413**
 
-**DESIGN.md 内容零校验（尽力提取，永不因内容 400）**：frontmatter 缺失/损坏 → 元数据降级为空
-（`id` 缺失时 `source_slug` 回落 slug、不校验格式；`name` 兜底链 表单 → MD → source_slug）；
-某章节 ` ```json design ` 块 JSON 非法 → 跳过该章节（warning 日志），其余章节保留；
-完全不可解码（非 UTF-8）→ 空 dict，展示端渲染空态（模板有「暂无关联内容」空态）。
-assets 与 MD 解耦：MD 乱码不影响 components/patterns 区块生成。
+**DESIGN.md 不解析不校验**：全文原文（含 frontmatter）进 `overview.markdown`，模板 markdown 渲染
+原样展示在概览；非 UTF-8 → 概览降级空字符串（不影响其余数据）。
+**design-system.json 结构（v3）**：tokens.json 字段原样 + `overview.markdown` +
+`components`/`patterns`（assets 扫描，与 tokens.json 的 key 天然不冲突）。
 
 **行为**：解压解析为 design-system.json（含 components/patterns 区块）存
 `design-systems/{slug}/design-system.json`；zip 原件存 `source.zip`（`source_zip_path` 列）；
@@ -171,7 +177,7 @@ DESIGN.md 提取存 `source.md`（`source_md_path` 列）；附件原样存
 
 管理台「Zip 解析」页数据源：上传 zip → 返回解析结果，右侧模板渲染预览。
 
-**请求**：`multipart/form-data`，字段 `file`（zip，直传 ≤200MB，校验同上传：安全校验/同名冲突/三件套/保留名/skill 附件）。
+**请求**：`multipart/form-data`，字段 `file`（zip，直传 ≤200MB，校验同上传：安全校验/同名冲突/四件套/tokens.json JSON/保留名/skill 附件）。
 
 **响应**：
 
@@ -191,7 +197,7 @@ DESIGN.md 提取存 `source.md`（`source_md_path` 列）；附件原样存
 - `skill_zip.filename`：附件原文件名（不强制命名）；`content_base64`：附件 ≤50MB 时 base64 回传
   （管理台「Zip 解析」页直接提供下载链接），超限为 null（提示入库后经 `skill_zip_url` 下载）
 - `skill_zip.skill_name`：技能名 = 附件 zip **第一层** SKILL.md frontmatter 的 `name` 字段；
-  附件为三件套必选项（`present` 恒 true），不合规（非 zip / 缺 SKILL.md / 缺 name）→ 400（与上传校验一致）
+  附件为四件套必选项（`present` 恒 true），不合规（非 zip / 缺 SKILL.md / 缺 name）→ 400（与上传校验一致）
 
 ### 2b. 分片上传（>20MB 由前端自动切换）
 
