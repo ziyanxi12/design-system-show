@@ -437,6 +437,25 @@ await fetch(`${apiBase}/api/design-systems/usage/report`, {
 - 补全后统计页（10 号组）立即受益：`stats/users` 取该账号最新事件快照，昵称/部门即刻显示
 - 未解析账号重复调用会再查一次 getAccount（短超时 2s，失败降级不丢数据）
 
+### 7d. POST /api/design-systems/views/correct —— 预览量纠正（公开维护）
+
+**语义**：手动修正 `views` 列历史错误数据的**运维通道**。与 PATCH 的 `views` 修正字段同语义：
+**非负整数、整字段覆盖（绝对值，非增量）**。
+
+**请求**：JSON body：
+
+```json
+{"slug": "ict-pc", "views": 500}
+```
+
+- `views` 非负整数（负数/非整数 → 422）；slug 软删/不存在 → 404
+
+**鉴权**：**完全公开**（在登录过期豁免清单内，**免 X-User-Data 直调**）——只开放「纠正预览量」
+这一个动作；PATCH 等管理写操作仍需登录态。无 X-User-Data 时操作日志记 unknown、`updated_by`
+不动；携带则记实际操作人。`updated_at` 随纠正更新（管理字段变更语义）。
+
+**响应**：`{"slug": "ict-pc", "views": 500}`
+
 ## 8. 设计系统白名单（独立于原 /api/whitelist，账号与开关互不影响）
 
 管理台登录校验与权限数据源。**与 lib-resource 原白名单完全隔离**：给设计系统加账号不影响
