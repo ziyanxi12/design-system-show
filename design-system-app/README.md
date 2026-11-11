@@ -61,3 +61,7 @@ public/
 - 列表排序由后端决定（default 置顶，其余按 slug 字典序）
 - 详情数据源是 api1 返回的 `json_url`（完整 URL，由后端 `PUBLIC_ORIGIN` 驱动），模板直接 fetch
 - 调用量（usage）由调用方显式自增（api 契约 7 号接口），展示端只读展示
+- 展示端可被宿主以 iframe 嵌入（跨源时门户 localStorage 不可达）：页面 onload 后向父页面
+  postMessage `{type:"onLoad"}` 播报就绪，宿主回发 `{type:"userInfo", data:{...userInfo, loginTime?}}`
+  作兜底登录态（可多次发送，后发覆盖先发）。取值优先级：localStorage（门户同源写入）→
+  `userInfo` 消息兜底 → 皆无则匿名降级（`/views` 打点口径）
