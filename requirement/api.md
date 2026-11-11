@@ -109,8 +109,8 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
   `design-systems/icons/icon-default.svg`（品牌紫圆角 + DS 字样；`BUILTIN_ICONS` 列表结构，便于后续扩充内置图标集）；
   `file_size` 为上传的 **zip 原件**大小（旧 MD 数据为 MD 大小）
 - `json_url` / `design_md_url` / `zip_url` / `skill_zip_url`：design-system.json（服务端解析产物，展示端数据源）、
-  zip 内提取的 DESIGN.md 原件、**zip 原件**、**附件**（DESIGN.md 同级任意 .zip，保留原文件名；zip 内无 .zip 则 null）的可访问 URL；
-  `skill_name`：技能名 = 附件 zip 第一层 SKILL.md frontmatter 的 `name`（无附件为 null；重传随附件更新）；
+  zip 内提取的 DESIGN.md 原件、**zip 原件**、**附件**（DESIGN.md 同级任意 .zip，保留原文件名）的可访问 URL；
+  `skill_name`：技能名 = 附件 zip 第一层 SKILL.md frontmatter 的 `name`（附件为三件套必选项；存量旧数据无附件时为 null）；
   当前部署约定为**相对路径**（`PUBLIC_ORIGIN` 置空 → `/static/...`）：本地 dev 走前端 vite 代理
   （`/api`、`/static` 直通 8009，纯同源无 CORS 依赖）；生产由 nginx 同域配置 `/api` 与 `/static` 直通后端。
   管理台文件行展示/下载的主文件是 source.zip；无 zip 的旧数据 `zip_url` 为 null（回落 DESIGN.md → JSON）
@@ -138,15 +138,18 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
 **服务端校验**（失败返回 400，detail 为错误说明/错误列表拼接）：
 
 1. 扩展名 .zip（其余 400「仅支持上传 zip 包」）
-2. zip 安全校验（slip / bomb / 条目数，见「zip 包格式」节）；必须含根级（或单层包裹目录下）DESIGN.md
-3. MD 可解析：必须有 frontmatter；各章节 ` ```json design ` 代码块须为合法 JSON
-4. 解析结果的 `id`（→ source_slug）匹配 `^[a-z0-9][a-z0-9-]*$`；`name` 非空
-5. `color` / `typography` / `spacing` / `radius` / `shadow` 至少一个区块（保证展示端模板可渲染）
-6. 附件文件名与系统保留文件（`source.zip` / `source.md` / `design-system.json`，大小写不敏感）冲突 → 400
-7. `cover_file` / `icon_file` 超 2MB / 类型不符 → 400
-8. 附件（如有）须为合法 skill 包：附件 zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），
-   且 frontmatter `name` 字段非空、≤255 字符；否则 400（zip 内无附件则不受此条限制，`skill_name` 为 null）
-9. zip 超 200MB → **413**
+2. zip 安全校验（slip / bomb / 条目数，见「zip 包格式」节）
+3. **三件套必须齐全**（根级或唯一包裹目录内，缺任一 → 400 **一次性列全缺失项**）：
+   `DESIGN.md` / `assets/` 目录（目录条目存在即放行，可为空）/ 附件 `.zip`（DESIGN.md 同级，不强制命名）；
+   三件套之外的文件与目录**丢弃不落盘、不报错**（服务端 info 日志打印丢弃清单）
+4. MD 可解析：必须有 frontmatter；各章节 ` ```json design ` 代码块须为合法 JSON
+5. 解析结果的 `id`（→ source_slug）匹配 `^[a-z0-9][a-z0-9-]*$`；`name` 非空
+6. `color` / `typography` / `spacing` / `radius` / `shadow` 至少一个区块（保证展示端模板可渲染）
+7. 附件文件名与系统保留文件（`source.zip` / `source.md` / `design-system.json`，大小写不敏感）冲突 → 400
+8. `cover_file` / `icon_file` 超 2MB / 类型不符 → 400
+9. 附件须为合法 skill 包：附件 zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），
+   且 frontmatter `name` 字段非空、≤255 字符；否则 400
+10. zip 超 200MB → **413**
 
 **行为**：解压解析为 design-system.json（含 components/patterns 区块）存
 `design-systems/{slug}/design-system.json`；zip 原件存 `source.zip`（`source_zip_path` 列）；
@@ -182,7 +185,7 @@ DESIGN.md 提取存 `source.md`（`source_md_path` 列）；附件原样存
 - `skill_zip.filename`：附件原文件名（不强制命名）；`content_base64`：附件 ≤50MB 时 base64 回传
   （管理台「Zip 解析」页直接提供下载链接），超限为 null（提示入库后经 `skill_zip_url` 下载）
 - `skill_zip.skill_name`：技能名 = 附件 zip **第一层** SKILL.md frontmatter 的 `name` 字段；
-  无附件时 `present=false` 且 `skill_name=null`；附件不合规（非 zip / 缺 SKILL.md / 缺 name）→ 400（与上传校验一致）
+  附件为三件套必选项（`present` 恒 true），不合规（非 zip / 缺 SKILL.md / 缺 name）→ 400（与上传校验一致）
 
 ### 2b. 分片上传（>20MB 由前端自动切换）
 
