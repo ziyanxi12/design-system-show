@@ -325,7 +325,7 @@ async function incrementUsage(apiBase, slug) {
 | 列 | 说明 |
 |---|---|
 | slug / event_type | 设计系统 + view（预览）/ usage（调用） |
-| account / nick_name / dept1..4 | 操作人快照（见下方「打点身份完整化」）；匿名调用 account 为空（匿名仅 7a 豁免可发生；7 须登录态） |
+| account / nick_name / dept1..4 | 操作人快照（见下方「打点身份完整化」）；匿名调用（仅 7a 豁免可发生）**不写事件行**——views 列照常自增（曝光量语义），事件表不再产生空 account 行 |
 | created_at | 打点时间（统计页时间序列 / 最近调用的来源） |
 
 **打点身份完整化**（事件写入前，失败静默降级、绝不丢打点）：
@@ -346,7 +346,7 @@ X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddl
 ### 10. GET /api/design-systems/stats/* —— 打点统计（管理台数据统计页）
 
 统一查询参数：`start` / `end`（日期 `YYYY-MM-DD`，闭区间，缺省不限）。
-口径：预览数=view 事件数；调用量=usage 事件数；人数=DISTINCT account（匿名不计）；
+口径：预览数=view 事件数（匿名浏览不计：匿名事件不入库 + 存量空 account 事件统一排除）；调用量=usage 事件数；人数=DISTINCT account（匿名不计）；
 最近调用时间=MAX(created_at)；软删系统的事件保留但不进统计（**四个接口口径一致**：排除统一在
 事件查询入口 `_range_query` 实现——summary 行与汇总 / trend / dept-share / users 均不含软删事件）；
 部门维度=事件快照 dept1。
@@ -363,12 +363,14 @@ X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddl
 **语义**：展示端设计系统详情页**每次加载**调用一次，`views += 1`（与 `/usage` 的外部显式调用不同，
 本接口由展示端前端自动触发，用于「调用量旁边展示预览量」的需求）。
 
-**鉴权**：**豁免**登录过期校验（在豁免清单内）——匿名可调（事件归「未知」）；已登录则携带
+**鉴权**：**豁免**登录过期校验（在豁免清单内）——匿名可调（**不写打点事件**，views 列照常自增）；已登录则携带
 `X-User-Data`，事件快照归属本人。
 
 **行为**：
 
 - 每次调用 `views += 1`，SQL 端原子自增（并发安全）
+- 匿名调用（无有效 X-User-Data）**不写打点事件**：`ds_usage_events` 不再产生空 account 行；
+  存量匿名行保留在库但不进统计（`_range_query` 统一排除，见 10 号口径）
 - 高频调用：不写操作日志；`updated_at` 保持不变
 - slug 不存在 → 404
 
