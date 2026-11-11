@@ -337,6 +337,25 @@
     .ds-page-search .ic { width: 16px; height: 16px; color: rgba(0,0,0,0.6); flex-shrink: 0; display: inline-flex; }
     .ds-page-search .ic svg { width: 16px; height: 16px; }
     .ds-page-search input { flex: 1; min-width: 0; font-size: 14px; border: none; outline: none; background: transparent; color: inherit; font-family: inherit; padding: 0; }
+
+    /* ---------- 概览 markdown 原文渲染（overview.markdown，octo-design-zip/2 新字段分支） ---------- */
+    .md-body { font-size: 14px; line-height: 1.8; color: rgba(0,0,0,0.88); }
+    .md-body h1, .md-body h2, .md-body h3, .md-body h4, .md-body h5, .md-body h6 { margin: 18px 0 8px; font-weight: 600; line-height: 1.4; }
+    .md-body h1 { font-size: 22px; }
+    .md-body h2 { font-size: 19px; }
+    .md-body h3 { font-size: 16px; }
+    .md-body h4 { font-size: 14px; }
+    .md-body h5, .md-body h6 { font-size: 13px; }
+    .md-body p { margin: 8px 0; }
+    .md-body ul, .md-body ol { margin: 8px 0; padding-left: 22px; }
+    .md-body li { margin: 3px 0; }
+    .md-body blockquote { margin: 10px 0; padding: 6px 14px; border-left: 3px solid #e5e6eb; color: rgba(0,0,0,0.55); background: #f5f6f8; border-radius: 0 8px 8px 0; }
+    .md-body code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; background: #eef0f4; padding: 1px 6px; border-radius: 4px; }
+    .md-body pre { margin: 10px 0; padding: 12px 16px; background: #f5f6f8; border-radius: 10px; overflow: auto; }
+    .md-body pre code { background: none; padding: 0; }
+    .md-body hr { border: none; border-top: 1px solid #e5e6eb; margin: 14px 0; }
+    .md-body a { color: #0A59F7; }
+    .md-body strong { font-weight: 600; }
   </style>
 </head>
 <body>
@@ -494,9 +513,53 @@
       R(box, ds, mapping);
     }
 
+    /* 轻量 markdown 渲染（概览原文展示，overview.markdown）：标题/列表/引用/代码块/行内样式/链接/水平线 */
+    var mdRender = function(src) {
+      var esc1 = function(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); };
+      var inl = function(s) {
+        return esc1(s).replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+          .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+          .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      };
+      var lines = String(src || "").replace(/\r\n/g, "\n").split("\n");
+      var out = [], list = null, quote = false, para = [], fence = false, fbuf = [];
+      var closePara = function() { if (para.length) { out.push("<p>" + para.map(inl).join("<br>") + "</p>"); para = []; } };
+      var closeList = function() { if (list) { out.push("</" + list + ">"); list = null; } };
+      var closeQuote = function() { if (quote) { out.push("</blockquote>"); quote = false; } };
+      lines.forEach(function(line) {
+        var t = line.trim();
+        if (fence) {
+          if (/^```/.test(t)) { out.push("<pre><code>" + esc1(fbuf.join("\n")) + "</code></pre>"); fbuf = []; fence = false; }
+          else fbuf.push(line);
+          return;
+        }
+        if (/^```/.test(t)) { closePara(); closeList(); closeQuote(); fence = true; return; }
+        if (!t) { closePara(); closeList(); closeQuote(); return; }
+        var h = t.match(/^(#{1,6})\s+(.*)$/);
+        if (h) { closePara(); closeList(); closeQuote(); out.push("<h" + h[1].length + ">" + inl(h[2]) + "</h" + h[1].length + ">"); return; }
+        if (/^(-{3,}|\*{3,})$/.test(t)) { closePara(); closeList(); closeQuote(); out.push("<hr>"); return; }
+        if (/^>\s?/.test(t)) { closePara(); closeList(); if (!quote) { out.push("<blockquote>"); quote = true; } out.push("<p>" + inl(t.replace(/^>\s?/, "")) + "</p>"); return; }
+        closeQuote();
+        var li = t.match(/^[-*+]\s+(.*)$/) || t.match(/^\d+[.)]\s+(.*)$/);
+        if (li) { closePara(); var tag = /^\d/.test(t) ? "ol" : "ul"; if (list !== tag) { closeList(); out.push("<" + tag + ">"); list = tag; } out.push("<li>" + inl(li[1]) + "</li>"); return; }
+        closeList();
+        para.push(t);
+      });
+      closePara(); closeList(); closeQuote();
+      if (fence) out.push("<pre><code>" + esc1(fbuf.join("\n")) + "</code></pre>");
+      return out.join("\n");
+    };
+
     /* ---------- 概览 ---------- */
     function rOverview(box, ds) {
       const ov = ds.overview || {};
+      // octo-design-zip/2：overview.markdown = DESIGN.md 全文原文 → markdown 渲染（存量无此字段走老路径）
+      if (ov.markdown) {
+        box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
+          '<div class="md-body">' + mdRender(ov.markdown) + '</div>';
+        return;
+      }
       // principles 语义上是一个列表：用 <ol><li> 渲染（浏览器默认粗体标题 + 序号列表），忠实还原数据结构
       box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
         '<div class="overview-text">' + esc(ov.text || "") + '</div>' +

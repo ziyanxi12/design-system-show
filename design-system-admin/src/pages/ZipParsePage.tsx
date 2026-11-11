@@ -248,7 +248,7 @@ export default function ZipParsePage() {
               <div style={{ fontSize: 12, color: '#595959', lineHeight: 1.8 }}>
                 1. zip 包经后端安全校验后解压（zip slip / zip bomb 防护）
                 <br />
-                2. DESIGN.md 解析为 design-system.json（token 区块）
+                2. tokens.json 转换为 design-system.json（token 区块）；DESIGN.md 原文进概览
                 <br />
                 3. assets/components、assets/patterns 递归扫描（目录层级 + html 名 = 组件名）
                 <br />

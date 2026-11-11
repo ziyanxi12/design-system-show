@@ -8,9 +8,10 @@
 > `DESIGN.md`（**原文原样**进概览 `overview.markdown`，模板 markdown 渲染，不再机器解析）
 > + `assets/`（components、patterns 递归目录到 html，html 文件名 = 组件名）
 > + 附件（DESIGN.md 同级**任意 .zip**，不强制命名，保留原文件名可下载）
-> + **`tokens.json`（唯一数据源）**：分组结构（color/radius/shadow/size/fontScale/
-> fontScaleRegular/opacity/other/type）**原样并入** design-system.json；非法 JSON → 400，
-> 分组缺失 → 模板空态。
+> + **`tokens.json`（唯一数据源）**：服务端**转换为老 design-system.json 区块结构**（模板与存量零改动）——
+> color（主题感知取首主题）→ color.groups、type → typography、size → spacing（数值化）、radius（数值化）、
+> shadow（原样 css 串）；非法 JSON / 顶层非对象 → 400；分组缺失 → 模板空态；
+> **fontScale/fontScaleRegular/opacity/other 顶层原样保留（暂不渲染）**。
 > **slug 由后端分配**（8 位随机 `[a-z0-9]`，API 路径/落盘目录/静态 URL）；
 > `source_slug` = tokens.json 的 `id`（预留，现无此字段 → 恒 = slug）。
 > **name 来源**：表单 → `tokens.json.name` → slug。
@@ -160,8 +161,10 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
 
 **DESIGN.md 不解析不校验**：全文原文（含 frontmatter）进 `overview.markdown`，模板 markdown 渲染
 原样展示在概览；非 UTF-8 → 概览降级空字符串（不影响其余数据）。
-**design-system.json 结构（v3）**：tokens.json 字段原样 + `overview.markdown` +
-`components`/`patterns`（assets 扫描，与 tokens.json 的 key 天然不冲突）。
+**design-system.json 结构（v3）**：tokens.json **转换后的老区块结构**（color.groups / typography /
+spacing / radius / shadow——模板原生渲染，存量系统同构）+ `overview.markdown`（DESIGN.md 全文，
+概览 markdown 渲染）+ `components`/`patterns`（assets 扫描）+ 多余分组顶层原样保留
+（fontScale 等，暂不渲染）。
 
 **行为**：解压解析为 design-system.json（含 components/patterns 区块）存
 `design-systems/{slug}/design-system.json`；zip 原件存 `source.zip`（`source_zip_path` 列）；
