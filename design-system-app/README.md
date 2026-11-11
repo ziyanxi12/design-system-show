@@ -63,5 +63,6 @@ public/
 - 调用量（usage）由调用方显式自增（api 契约 7 号接口），展示端只读展示
 - 展示端可被宿主以 iframe 嵌入（跨源时门户 localStorage 不可达）：页面 onload 后向父页面
   postMessage `{type:"onLoad"}` 播报就绪，宿主回发 `{type:"userInfo", data:{...userInfo, loginTime?}}`
-  作兜底登录态（可多次发送，后发覆盖先发）。取值优先级：localStorage（门户同源写入）→
+  作兜底登录态（可多次发送，后发覆盖先发）。消息兼容对象与 JSON 字符串两种形态（整包字符串化，
+  或 data 字段字符串化）。取值优先级：localStorage（门户同源写入）→
   `userInfo` 消息兜底 → 皆无则匿名降级（`/views` 打点口径）
