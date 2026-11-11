@@ -8,7 +8,8 @@
 > `DESIGN.md`（展示数据，服务端解析）+ `assets/`（components、patterns 递归目录到 html，
 > html 文件名 = 组件名）+ 附件（DESIGN.md 同级**任意 .zip**，不强制命名，保留原文件名可下载）。
 > **slug 由后端分配**（8 位随机 `[a-z0-9]`，API 路径/落盘目录/静态 URL），
-> MD frontmatter 的 id 原样保留在 `source_slug`（不唯一，允许重复）——同 id 重传不再 409。
+> MD frontmatter 的 id 原样保留在 `source_slug`（不唯一，允许重复；**id 可缺失**——缺失回落 slug，
+> 不校验格式，仅作展示/搜索/多版本追溯）——同 id 重传不再 409。
 > **usage 不从 MD 派生**（md 里的 `usage: 143` 不允许直接使用）：新增恒 0，修正通道仅表单字段。
 > 大文件分片：>20MB 走 `init → chunks → complete`（5MB/片，前端 console 打印分片日志）。
 >
@@ -144,14 +145,17 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
 3. **三件套必须齐全**（根级或唯一包裹目录内，缺任一 → 400 **一次性列全缺失项**）：
    `DESIGN.md` / `assets/` 目录（目录条目存在即放行，可为空）/ 附件 `.zip`（DESIGN.md 同级，不强制命名）；
    三件套之外的文件与目录**丢弃不落盘、不报错**（服务端 info 日志打印丢弃清单）
-4. MD 可解析：必须有 frontmatter；各章节 ` ```json design ` 代码块须为合法 JSON
-5. 解析结果的 `id`（→ source_slug）匹配 `^[a-z0-9][a-z0-9-]*$`；`name` 非空
-6. `color` / `typography` / `spacing` / `radius` / `shadow` 至少一个区块（保证展示端模板可渲染）
-7. 附件文件名与系统保留文件（`source.zip` / `source.md` / `design-system.json`，大小写不敏感）冲突 → 400
-8. `cover_file` / `icon_file` 超 2MB / 类型不符 → 400
-9. 附件须为合法 skill 包：附件 zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），
+4. 附件文件名与系统保留文件（`source.zip` / `source.md` / `design-system.json`，大小写不敏感）冲突 → 400
+5. `cover_file` / `icon_file` 超 2MB / 类型不符 → 400
+6. 附件须为合法 skill 包：附件 zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），
    且 frontmatter `name` 字段非空、≤255 字符；否则 400
-10. zip 超 200MB → **413**
+7. zip 超 200MB → **413**
+
+**DESIGN.md 内容零校验（尽力提取，永不因内容 400）**：frontmatter 缺失/损坏 → 元数据降级为空
+（`id` 缺失时 `source_slug` 回落 slug、不校验格式；`name` 兜底链 表单 → MD → source_slug）；
+某章节 ` ```json design ` 块 JSON 非法 → 跳过该章节（warning 日志），其余章节保留；
+完全不可解码（非 UTF-8）→ 空 dict，展示端渲染空态（模板有「暂无关联内容」空态）。
+assets 与 MD 解耦：MD 乱码不影响 components/patterns 区块生成。
 
 **行为**：解压解析为 design-system.json（含 components/patterns 区块）存
 `design-systems/{slug}/design-system.json`；zip 原件存 `source.zip`（`source_zip_path` 列）；
@@ -167,7 +171,7 @@ DESIGN.md 提取存 `source.md`（`source_md_path` 列）；附件原样存
 
 管理台「Zip 解析」页数据源：上传 zip → 返回解析结果，右侧模板渲染预览。
 
-**请求**：`multipart/form-data`，字段 `file`（zip，直传 ≤200MB，校验同上传 1-5）。
+**请求**：`multipart/form-data`，字段 `file`（zip，直传 ≤200MB，校验同上传：安全校验/同名冲突/三件套/保留名/skill 附件）。
 
 **响应**：
 
@@ -485,7 +489,7 @@ is_active（软删）、created_at/updated_at。
 |---|---|---|
 | id | int PK | 自增 |
 | slug | varchar(100) UNIQUE | 系统标识（**后端生成 8 位随机 [a-z0-9]**）：API 路径 / 落盘目录 / 静态 URL |
-| source_slug | varchar(100) | DESIGN.md frontmatter 的 id 原样保留（**不唯一，允许重复**；展示/搜索/追溯）。存量数据启动时回填 = slug |
+| source_slug | varchar(100) | DESIGN.md frontmatter 的 id 原样保留（**不唯一，允许重复**；展示/搜索/追溯；**id 可缺失**，缺失回落 slug，不校验格式）。存量数据启动时回填 = slug |
 | name / desc | varchar(255) / text | 卡片字段 |
 | usage | int | 调用量（默认 0；**不从 MD 派生**） |
 | views | int | 预览量（默认 0；展示端详情页每次加载自动 +1，走 /views 接口） |
