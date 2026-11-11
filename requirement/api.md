@@ -124,7 +124,8 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
 - `usage`：**不从 MD frontmatter 派生**（v2 需求：md 里的 usage 值不允许直接使用）——新增恒 0，
   修正通道仅 PATCH 的 `usage` 字段与 `/usage` 自增接口；重传保留现值
 - `views`：**预览量**——展示端设计系统详情页**每次加载自动 +1**（`POST /{slug}/views`），
-  新增恒 0；高频调用不写操作日志、不动 `updated_at`；展示端头部用接口返回值即时显示
+  新增恒 0；高频调用不写操作日志、不动 `updated_at`；展示端头部用接口返回值即时显示；
+  修正通道仅 PATCH 的 `views` 字段（API 层保留；**界面不提供编辑入口**，手动修正走此字段）
 - `created_by/updated_by` 为 account，`*_name` 为「昵称 account」显示名——直查 users 表解析，无记录时回落 account
 - 排序：`default` 置顶，其余按 `created_at` 倒序（slug 已随机化，字典序无意义）
 
@@ -234,6 +235,7 @@ POST /api/design-systems/uploads/{upload_id}/complete
 | name / desc / default | 可选表单字段 | 卡片字段（slug 不可改） |
 | author | 可选 | 作者，**JSON 数组字符串**（/getAccount 完整值条目，空数组清空作者）；写入时按 account 兜底补全 |
 | usage | 可选 | 调用量修正通道（API 层保留）；**界面不提供编辑入口**，手动修正走此字段 |
+| views | 可选 | 预览量修正通道（API 层保留）；**界面不提供编辑入口**，手动修正走此字段；非负整数、整字段覆盖（绝对值语义，非增量） |
 | cover_file | File? | 可选新封面（jpg/png/webp ≤2MB）；上传则覆盖现有封面，不上传则保留现有封面 |
 | icon_file | File? | 可选新图标（jpg/png/webp/svg ≤2MB）；上传则覆盖现有图标，不上传则保留现有图标 |
 
