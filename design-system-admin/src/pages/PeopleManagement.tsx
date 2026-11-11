@@ -24,11 +24,13 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: <Tag color="blue" style={{ margin: 0 }}>管理员</Tag> },
 ]
 
-/** 人员管理：白名单账号列表（5 列）；顶部搜索多选 + 点「增加」批量添加（/getAccount 联想），写操作仅 super */
+/** 人员管理：白名单账号列表（5 列）；顶部搜索多选 + 点「增加」批量添加（/getAccount 联想）。
+ * 权限：仅 super 可「增加」；删除账号 / 改角色 admin 亦可；null 只读 */
 export default function PeopleManagement() {
   const { message } = App.useApp()
   const role = useRole()
   const isSuper = role === 'super'
+  const canEdit = role === 'super' || role === 'admin'
 
   const [list, setList] = useState<WhitelistAccount[]>([])
   const [loading, setLoading] = useState(false)
@@ -162,9 +164,9 @@ export default function PeopleManagement() {
       title: '角色',
       dataIndex: 'role',
       width: 110,
-      // super 可行内下拉改角色；普通用户只读展示 Tag
+      // super/admin 可行内下拉改角色；null 角色只读展示 Tag
       render: (_, it) =>
-        isSuper ? (
+        canEdit ? (
           <Select
             size="small"
             variant="borderless"
@@ -190,7 +192,7 @@ export default function PeopleManagement() {
       key: 'actions',
       width: 90,
       render: (_, it) =>
-        isSuper ? (
+        canEdit ? (
           <Popconfirm
             title="删除账号"
             description={`确认删除「${it.account}」？`}

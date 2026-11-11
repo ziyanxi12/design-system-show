@@ -16,8 +16,9 @@
 
 登录走统一 signIn（本地开发用 `public/signIn` mock 页）；进入前经 AuthGuard 调白名单校验接口：
 
-- `super`：全部操作（新增/编辑/删除设计系统、人员管理写操作）
-- `admin`：可编辑/重传设计系统；人员管理只读
+- `super` 与 `admin` 的**唯一差异**：人员管理顶部「增加」入口仅 super 可见
+- 其余全部操作（新增/编辑/删除设计系统、Zip 解析、人员管理删除账号/行内改角色、操作记录、数据统计）admin 均可做
+- `null`（无角色）：只读（编辑/新增/删除与人员管理写操作均隐藏）
 - 白名单外：denied 页
 
 角色与白名单数据存于后端 `ds_whitelist_accounts` 表（种子：admin/zhangsan=super，lisi/guest/wangwu=admin）。

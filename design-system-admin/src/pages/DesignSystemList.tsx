@@ -36,7 +36,6 @@ const fmtSize = (n?: number) =>
 export default function DesignSystemList() {
   const { message } = App.useApp()
   const role = useRole()
-  const isSuper = role === 'super'
   const canEdit = role === 'super' || role === 'admin'
 
   const [items, setItems] = useState<DesignSystemItem[]>([])
@@ -166,7 +165,7 @@ export default function DesignSystemList() {
               编辑
             </Button>
           )}
-          {isSuper && (
+          {canEdit && (
             <Popconfirm
               title="删除设计系统"
               description={`确认删除「${it.name}」？删除后不可恢复。`}
@@ -199,7 +198,7 @@ export default function DesignSystemList() {
               reload(v)
             }}
           />
-          {isSuper && (
+          {canEdit && (
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新增设计系统
             </Button>
