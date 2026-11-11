@@ -478,7 +478,8 @@
     }
 
     /* ================= 分区框架 ================= */
-    /* 九个固定菜单：无数据的区块以空态展示（数据没解析出来也保持菜单存在） */
+    /* 固定菜单：无数据的区块以空态展示（数据没解析出来也保持菜单存在）；
+       「布局与适配」第一期隐藏——导航项/主内容分区/滚动联动均由 SECTIONS 驱动，注释即整体下线，第二期恢复解注释即可 */
     const SECTIONS = [
       { key: "overview", label: "概览", icon: "sec-overview" },
       { key: "color", label: "颜色", icon: "sec-color" },
@@ -487,7 +488,7 @@
       { key: "radius", label: "圆角", icon: "sec-radius" },
       { key: "shadow", label: "阴影", icon: "sec-shadow" },
       { key: "components", label: "组件", icon: "sec-component" },
-      { key: "layout", label: "布局与适配", icon: "sec-layout" },
+      // { key: "layout", label: "布局与适配", icon: "sec-layout" },   // 第一期隐藏
       { key: "patterns", label: "Pattern", icon: "sec-layout" }
     ];
     const ui = { typeSample: "", spScene: 0, radScene: 0, assetSub: {}, assetShow: {}, assetQuery: "" };
@@ -1049,7 +1050,7 @@
       const compItems = (ds.components && ds.components.items) || [];
       const compNav = compNavGroups(compItems);
       // 头部（面包屑/标题/作者/调用量/预览量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据；
-      // 九个固定菜单恒渲染，无数据的区块（组件/布局与适配/Pattern 等）以空态展示
+      // 固定菜单恒渲染，无数据的区块（组件/Pattern 等）以空态展示；「布局与适配」第一期隐藏
       app.innerHTML =
         '<div class="body">' +
           '<nav class="nav" id="nav">' + SECTIONS.map(s => {
