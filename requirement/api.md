@@ -5,7 +5,7 @@
 > （本地 `./storage`，生产 `/data/resource`），文件相对路径 `design-systems/{slug}/…`
 >
 > **v3 变更**：上传物为 **zip 包**（octo-design-zip/2，四件套）：
-> `DESIGN.md`（**原文原样**进概览 `overview.markdown`，模板 markdown 渲染，不再机器解析）
+> `DESIGN.md`（**原文原样**提取存 `source.md`，展示端概览 fetch 后 markdown 渲染，不再机器解析）
 > + `assets/`（components、patterns 递归目录到 html，html 文件名 = 组件名）
 > + 附件（DESIGN.md 同级**任意 .zip**，不强制命名，保留原文件名可下载）
 > + **`tokens.json`（唯一数据源）**：服务端**转换为老 design-system.json 区块结构**（模板与存量零改动）——
@@ -50,8 +50,14 @@ xxx.zip                          ≤200MB
 
 **服务端处理**：zip 先落盘（`source.zip`）再解压 → `DESIGN.md` 解析为 design-system.json（复用
 `app/services/design_system_md.py`）→ 递归扫描 `assets/components`、`assets/patterns`
-（目录层级保留在 `group` 字段 + name 前缀；html 源码内嵌 `source.files[].code`，
-同目录 css/scss 一并内嵌——展示端模板 sandbox iframe 直接渲染）→ 合并为最终 design-system.json。
+（目录层级保留在 `group` 字段 + name 前缀；`items[].height` 固定写默认 160——展示端表格行
+预览高度，预留后续修正通道）。**双口径**：parse 预览响应（2a，落盘前无 URL，管理台解析页只能
+靠内嵌渲染）保留全量内嵌——html 源码进 `source.files[].code`、同目录 css/scss 一并内嵌、
+Pattern `states[].html` 内嵌、DESIGN.md 全文进 `overview.markdown`；**存储版 design-system.json 瘦身**
+（展示端 iframe src 直连 `/static` 资产，只用路径）：components 的 `source.files` 只留 html 条目 `{lang, path}`
+（去 code、去 css 条目）、patterns 的 `states[*]` 只留 `meta` 路径（去内嵌 html）、
+overview 去 `overview.markdown`（概览 fetch `source.md`，即 design_md_url 落盘件），
+`title/desc/items[].desc/items[].label/height` 等其余字段全部保留。
 
 **安全校验（400）**：zip slip（`..`/绝对路径/反斜杠/symlink/特殊文件类型）、zip bomb
 （条目数 >5000、解压总量 >500MB、单文件 >10MB 且压缩比 >100）、缺 DESIGN.md、
@@ -160,12 +166,14 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
    且 frontmatter `name` 字段非空、≤255 字符；否则 400
 7. zip 超 200MB → **413**
 
-**DESIGN.md 不解析不校验**：全文原文（含 frontmatter）进 `overview.markdown`，模板 markdown 渲染
-原样展示在概览；非 UTF-8 → 概览降级空字符串（不影响其余数据）。
+**DESIGN.md 不解析不校验**：全文原文（含 frontmatter）提取存 `source.md`（展示端概览 fetch 该文件后
+markdown 渲染，读不到显示「未提取到」）；parse 响应同步进 `overview.markdown` 供解析页预览，
+存储版经 slim 去除（不内嵌）。非 UTF-8 → 提取降级空文件（不影响其余数据）。
 **design-system.json 结构（v3）**：tokens.json **转换后的老区块结构**（color.groups / typography /
 spacing / radius / shadow——模板原生渲染，存量系统同构）+ `overview.markdown`（DESIGN.md 全文，
-概览 markdown 渲染）+ `components`/`patterns`（assets 扫描）+ 多余分组顶层原样保留
-（fontScale 等，暂不渲染）。
+仅 parse 响应——存储版经 slim 去除，概览 fetch `source.md`）+ `components`/`patterns`
+（assets 扫描：`items[].height` 行高默认 160；存储版不内嵌源码只留路径，见「服务端处理」双口径）
++ 多余分组顶层原样保留（fontScale 等，暂不渲染）。
 
 **行为**：解压解析为 design-system.json（含 components/patterns 区块）存
 `design-systems/{slug}/design-system.json`；zip 原件存 `source.zip`（`source_zip_path` 列）；

@@ -99,11 +99,6 @@
     .sec-desc { margin-top: 12px; color: var(--text-primary); }
     .sec-divider { height: 1px; background: var(--border-1); margin: 24px 0; }
     .sec-tools { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-    .overview-text { margin-top: 12px; font-size: 15px; line-height: 28px; color: var(--text-primary); max-width: 960px; white-space: pre-wrap; }
-    /* 设计原则（principles 列表的语义渲染：h3 粗体标题 + ol 序号列表） */
-    .ov-sec { margin-top: 32px; }
-    .ov-sec h3 { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: var(--text-primary); }
-    .ov-items { margin: 0; padding-left: 20px; font-size: 14px; line-height: 28px; color: var(--text-primary); max-width: 960px; }
 
     .sub-title { font-size: 14px; line-height: 22px; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
     .sub-title small { color: var(--text-3); font-size: 12px; }
@@ -235,16 +230,8 @@
     .ct-name .src-badge { margin-top: 10px; }
     .ct-name { display: flex; flex-direction: column; justify-content: center; }
     .ct-preview { padding: 0 !important; height: 160px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .ct-preview .cp-frame { width: 100%; height: 160px; border: 0; display: block; }
+    .ct-preview .cp-frame { width: 100%; height: 100%; border: 0; display: block; }
     .ct-preview > .pv, .ct-preview > .ct-shots, .ct-preview > .ct-empty { margin: 0 20px; }
-    /* ---------- Pattern（视觉基线引导 + 目录表格，表格与组件区同款） ---------- */
-    .pt-baseline { margin-top: 20px; background: #F5F5F7; border-radius: 16px; padding: 28px; }
-    .pt-base-head { display: flex; align-items: baseline; gap: 12px; }
-    .pt-base-head h3 { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--text-primary); margin: 0; }
-    .pt-base-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
-    .pt-base-tag i { width: 7px; height: 7px; border-radius: 50%; background: #22C55E; }
-    .pt-base-desc { margin: 10px 0 0; font-size: 14px; line-height: 22px; color: var(--text-2); max-width: 720px; }
-    .pt-table { margin-top: 20px; }
     .ct-shots { display: flex; flex-wrap: wrap; gap: 8px; }
     .ct-shots img { height: 56px; border-radius: 8px; background: #F2F3F5; transition: transform .15s; }
     .ct-shots img:hover { transform: scale(1.6); position: relative; z-index: 2; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
@@ -522,7 +509,9 @@
     function renderCard(ds, key, mapping) {
       const box = document.getElementById("sec-" + key);
       if (!box) return;
-      if (!ds[key]) { box.innerHTML = emptyState(ds, key); return; }
+      /* 概览例外：数据源是 source.md 文件（与 json 的 overview 键无关），始终走 rOverview
+         ——读到展示，读不到由渲染器走统一空态 */
+      if (!ds[key] && key !== "overview") { box.innerHTML = emptyState(ds, key); return; }
       const R = { overview: rOverview, color: rColor, typography: rType, spacing: rSpacing, radius: rRadius, shadow: rShadow, components: rComponents, assets: rAssets, patterns: rPatterns }[key];
       if (!R) { box.innerHTML = emptyState(ds, key); return; }   // 无渲染器的区块（如 layout）一律空态
       R(box, ds, mapping);
@@ -566,20 +555,20 @@
       return out.join("\n");
     };
 
-    /* ---------- 概览 ---------- */
+    /* ---------- 概览（DESIGN.md 全文：fetch source.md，读到展示，读不到走统一空态） ---------- */
     function rOverview(box, ds) {
-      const ov = ds.overview || {};
-      // octo-design-zip/2：overview.markdown = DESIGN.md 全文原文 → markdown 渲染（存量无此字段走老路径）
-      if (ov.markdown) {
-        box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
-          '<div class="md-body">' + mdRender(ov.markdown) + '</div>';
-        return;
-      }
-      // principles 语义上是一个列表：用 <ol><li> 渲染（浏览器默认粗体标题 + 序号列表），忠实还原数据结构
-      box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
-        '<div class="overview-text">' + esc(ov.text || "") + '</div>' +
-        (ov.principles && ov.principles.length ? '<div class="ov-sec"><h3>设计原则</h3>' +
-          '<ol class="ov-items">' + ov.principles.map(p => '<li>' + esc(p) + '</li>').join("") + '</ol></div>' : "");
+      const head = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>';
+      box.innerHTML = head + '<div class="md-body">加载中…</div>';
+      const empty = () => { box.innerHTML = emptyState(ds, "overview"); };
+      const base = realJsonBase(JSON_URL);
+      if (!base) { empty(); return; }
+      fetch(base + "/source.md")
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+        .then(md => {
+          box.innerHTML = head + '<div class="md-body">' + mdRender(md) + '</div>';
+          if (!md.trim()) empty();
+        })
+        .catch(empty);
     }
 
     /* ---------- 颜色 ---------- */
@@ -707,6 +696,9 @@
       return "none";
     }
 
+    /* 行高：items[].height（后端默认 160，预留修正通道），脏数据夹取 80–1200 */
+    const rowHeight = it => Math.min(1200, Math.max(80, Math.round(Number(it && it.height) || 160)));
+
     /* token 推导预览：点击可交互 */
     function previewClick(t) {
       const g = t.dataset.tg;
@@ -764,7 +756,7 @@
         '<div class="ct-name">' +
         '<div class="nm">' + esc(compRowName(it)) + '</div>' +
         '</div>' +
-        '<div class="ct-preview">' + previewHtml + '</div>';
+        '<div class="ct-preview" style="height:' + rowHeight(it) + 'px">' + previewHtml + '</div>';
 
       if (mode === "url") {
         /* 组件 html 直连后端 /static 资产（iframe src=URL，源码不写进 iframe）；
@@ -882,7 +874,7 @@
       };
     }
 
-    /* ---------- Pattern（视觉基线引导 + 表格展示；iframe src 只直连 /static 真实页面） ---------- */
+    /* ---------- Pattern（title/desc + 表格展示 items；iframe src 只直连 /static 真实页面） ---------- */
     /* pattern 条目（导航与表格共用同一份，保证索引一致）：items[].id ↔ cards[].id 匹配，
        路径来源 $file / state.meta / item.label（均为 zip 内路径 assets/patterns/**.html）；
        v3：assets/patterns 每个 html 文件一个 card state，后端已解压落盘可 /static 直连 */
@@ -900,12 +892,12 @@
       const entries = [];
       if (view.html && view.html.$file) {
         const u = assetUrl(realJsonBase(JSON_URL), view.html.$file);
-        if (u) entries.push({ name: p.title || "Pattern", group: null, url: u });
+        if (u) entries.push({ name: p.title || "Pattern", group: null, height: null, url: u });
       } else (view.cards || []).forEach(card => Object.values(card.states || {}).forEach(st => {
         const u = st && assetUrl(realJsonBase(JSON_URL), statePath(st, card));
         if (!u) return;
         const it = (p.items || []).find(x => x && x.id === card.id);
-        entries.push({ name: (it && it.name) || card.id || "Pattern", group: (it && it.group) || null, url: u });
+        entries.push({ name: (it && it.name) || card.id || "Pattern", group: (it && it.group) || null, height: it && it.height, url: u });
       }));
       return entries;
     }
@@ -914,18 +906,14 @@
       const p = ds.patterns;
       const entries = patternEntries(ds);
       if (!entries.length) { box.innerHTML = emptyState(ds, "patterns"); return; }
-      /* 与组件表格同款：名称（去目录前缀，垂直居中）| 预览（iframe src 直连，固定 160px 内部滚动） */
+      /* 与组件区同款：title/desc + 表格展示 items（名称 | html 预览） */
       box.innerHTML = sectionShell("patterns", p.title || "布局 Pattern", esc(p.desc)) +
-        '<div class="pt-baseline">' +
-          '<div class="pt-base-head"><h3>Pattern 视觉基线</h3><span class="pt-base-tag"><i></i>组合层 · 不计入组件目录</span></div>' +
-          '<p class="pt-base-desc">组件只能填入 Pattern 声明的槽位，不得改变栏顺序、宽度策略、表面、分割线或滚动归属。</p>' +
-        '</div>' +
-        '<div class="ct-table pt-table">' +
+        '<div class="ct-table">' +
           '<div class="ct-row ct-th"><div>名称</div><div>预览</div></div>' +
           entries.map((e, i) =>
             '<div class="ct-row" id="patr-' + i + '" data-patr-block="' + i + '">' +
               '<div class="ct-name"><div class="nm" title="' + esc(e.name) + '">' + esc(compRowName(e)) + '</div></div>' +
-              '<div class="ct-preview"><iframe class="cp-frame" data-frame="p' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(e.name) + '"></iframe></div>' +
+              '<div class="ct-preview" style="height:' + rowHeight(e) + 'px"><iframe class="cp-frame" data-frame="p' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(e.name) + '"></iframe></div>' +
             '</div>').join("") +
         '</div>';
       entries.forEach((e, i) => { $('.cp-frame[data-frame="p' + i + '"]', box).src = e.url; });
