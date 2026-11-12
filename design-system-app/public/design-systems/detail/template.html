@@ -233,9 +233,18 @@
     .ct-name .nm { font-size: 15px; font-weight: 500; color: var(--text-primary); }
     .ct-name .props { margin-top: 6px; font-size: 12px; color: var(--text-3); line-height: 18px; }
     .ct-name .src-badge { margin-top: 10px; }
-    .ct-preview { padding: 0 !important; }
-    .ct-preview .cp-frame { width: 100%; min-height: 120px; border: 0; display: block; }
-    .ct-preview > .pv, .ct-preview > .ct-shots, .ct-preview > .ct-empty { margin: 20px; }
+    .ct-name { display: flex; flex-direction: column; justify-content: center; }
+    .ct-preview { padding: 0 !important; height: 160px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .ct-preview .cp-frame { width: 100%; height: 160px; border: 0; display: block; }
+    .ct-preview > .pv, .ct-preview > .ct-shots, .ct-preview > .ct-empty { margin: 0 20px; }
+    /* ---------- Pattern（视觉基线引导 + 目录表格，表格与组件区同款） ---------- */
+    .pt-baseline { margin-top: 20px; background: #F5F5F7; border-radius: 16px; padding: 28px; }
+    .pt-base-head { display: flex; align-items: baseline; gap: 12px; }
+    .pt-base-head h3 { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--text-primary); margin: 0; }
+    .pt-base-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
+    .pt-base-tag i { width: 7px; height: 7px; border-radius: 50%; background: #22C55E; }
+    .pt-base-desc { margin: 10px 0 0; font-size: 14px; line-height: 22px; color: var(--text-2); max-width: 720px; }
+    .pt-table { margin-top: 20px; }
     .ct-shots { display: flex; flex-wrap: wrap; gap: 8px; }
     .ct-shots img { height: 56px; border-radius: 8px; background: #F2F3F5; transition: transform .15s; }
     .ct-shots img:hover { transform: scale(1.6); position: relative; z-index: 2; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
@@ -492,6 +501,8 @@
       { key: "patterns", label: "Pattern", icon: "sec-layout" }
     ];
     const ui = { typeSample: "", spScene: 0, radScene: 0, assetSub: {}, assetShow: {}, assetQuery: "" };
+    /* 当前系统 design-system.json 地址（loadSystem 记录）：组件/Pattern 资产直连 URL 的推导依据 */
+    let JSON_URL = "";
 
     function sectionShell(sec, title, desc, tools) {
       return '<div class="sec-label">' + esc(SECTIONS.find(s => s.key === sec).label) + '</div>' +
@@ -665,32 +676,8 @@
       bindCopy(box);
     }
 
-    /* ---------- 组件（三列表格 + 沙箱预览，demo ds.js 移植） ---------- */
-    const PROP_CN = { types: "变体", type: "变体", variant: "变体", state: "状态", status: "状态", size: "尺寸", color: "颜色", selected: "选中", checked: "选中", disabled: "禁用", loading: "加载", indeterminate: "半选", closable: "可关闭", dot: "圆点", count: "数量", showTotal: "显示总数", material: "材质" };
-    const LIVE = "__live";
-    const STATES = [[LIVE, "交互"], ["hover", "悬停"], ["pressed", "按下"], ["disabled", "禁用"]];
-    const FORCE = { enabled: "rest", normal: "rest", default: "rest", hover: "hover", pressed: "pressed", active: "pressed", focus: "focus", focused: "focus", disabled: "disabled", loading: "loading" };
+    /* ---------- 组件（两列表格：名称 | 预览，iframe src 直连 /static 资产） ---------- */
     const TOKEN_PREVIEW = ["button", "input", "search", "numeric", "form", "switch", "checkbox", "radio", "tabs", "tag", "alert", "badge", "pagination", "card", "dialog", "drawer", "breadcrumb", "link"];
-
-    function variantAxes(it) {
-      if (it.variants) {
-        const im = it.interaction || {};
-        const base = (it.variants.find(v => /Enabled/.test(JSON.stringify(v.props))) || it.variants[0]).props;
-        const axes = it.props.filter(k => k !== "scenario" && k !== im.stateAxis && new Set(it.variants.map(v => v.props[k])).size > 1)
-          .map(k => ({ k: k, label: PROP_CN[k] || k, values: [...new Set(it.variants.map(v => v.props[k]))] }));
-        const ORDER = ["rest", "hover", "pressed", "focus", "disabled", "loading"];
-        const states = im.stateAxis ? [...new Set(it.variants.map(v => v.props[im.stateAxis]))].map(v => ({ label: v, force: FORCE[String(v).toLowerCase()] || String(v).toLowerCase() }))
-          .sort((a, b) => (ORDER.indexOf(a.force) + 1 || 99) - (ORDER.indexOf(b.force) + 1 || 99)) : [];
-        return { base: base, axes: axes, states: states, stateLabel: PROP_CN[im.stateAxis] || "状态" };
-      }
-      const base = defaultsFor(it);
-      const props = (it.props || []).filter(p => typeof p === "object" && /\|/.test(p.values));
-      const axes = props.map(p => ({ k: p.name, label: PROP_CN[p.name] || p.name, values: p.values.split("|").map(x => x.trim()) }));
-      const bools = (it.props || []).filter(p => typeof p === "object" && p.values === "boolean").map(p => p.name);
-      const states = [["rest", "默认"], ["hover", "悬停"], ["pressed", "按下"], ["focus", "聚焦"], ["disabled", "禁用"]].map(([f, l]) => ({ label: l, force: f }));
-      if (bools.includes("loading")) states.push({ label: "加载", force: "loading", attr: "loading" });
-      return { base: base, axes: axes, states: states, stateLabel: "状态" };
-    }
 
     function defaultsFor(it) {
       const out = {};
@@ -700,123 +687,24 @@
       return out;
     }
 
-    const canRender = src => src.files.some(f => /^(html|tsx|jsx)$/.test(f.lang) && typeof f.code === "string");
+    const htmlFile = src => (src.files || []).find(f => f.lang === "html");
+    /* 资产直连 URL：files[].path（zip 相对路径，含 assets/ 前缀）→ {jsonUrl 目录}/assets/**
+       （后端上传 zip 时已解压落盘、经 /static 直可访问）；推导不出返回 null，按无预览处理
+       —— 展示端 src 只访问真实 html 页面，不再生成文档 / Blob */
+    const realJsonBase = url => !url || /^(blob:|data:)/i.test(url) ? null : url.slice(0, url.lastIndexOf("/"));
+    function assetUrl(base, path) {
+      if (!base || !path) return null;
+      const m = String(path).match(/(?:^|\/)assets\/(.+)$/);
+      const rel = m ? m[1] : String(path).replace(/^\/+/, "");
+      if (!rel || /(^|\/)\.\.(\/|$)/.test(rel)) return null;
+      return base + "/assets/" + rel.split("/").map(encodeURIComponent).join("/");
+    }
     function previewMode(it) {
       const src = it.source || { status: "missing" };
-      if (src.status === "found" && canRender(src)) return "source";
-      if (src.status === "generated") return "ai";
+      if (src.status === "found" && assetUrl(realJsonBase(JSON_URL), (htmlFile(src) || {}).path)) return "url";
       if (it.variants) return "shot";
       if (TOKEN_PREVIEW.includes(it.id)) return "token";
       return "none";
-    }
-
-    function mobileScale(ds) {
-      const body = ((ds.typography || {}).scale || []).filter(x => /body/i.test(x.name)).map(x => x.size);
-      return body.length && Math.max(...body) >= 16 ? 0.75 : 1;
-    }
-
-    const CDN = {
-      react: "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
-      dom: "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js",
-      babel: "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"
-    };
-
-    function sandboxDoc(it, props, ds, i) {
-      const files = it.source.files;
-      const css = files.filter(f => /^(css|scss)$/.test(f.lang)).map(f => typeof f.code === "string" ? f.code : "").join("\n");
-      const vars = themeVars(deriveTheme(ds));
-      const head = '<meta charset="utf-8"><style>:root{' + vars + '}html,body{margin:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:24px;box-sizing:border-box;font-family:"HarmonyOS Sans SC","PingFang SC",sans-serif}.cp-err{color:#E84026;font:12px/18px monospace;white-space:pre-wrap}' + css + '</style>';
-      const fit = '<scr' + 'ipt>new ResizeObserver(()=>parent.postMessage({cpFrame:' + i + ',h:document.body.scrollHeight},"*")).observe(document.body);</scr' + 'ipt>';
-      const html = files.find(f => f.lang === "html");
-      if (html && it.source.status === "generated") {
-        const kit = '<style>body{display:block;min-height:0;padding:24px 28px}.g{display:flex;flex-direction:column;gap:20px}.g-sec{display:flex;flex-direction:column;gap:10px}.g-label{font-size:12px;color:#8a8a8a}.g-row{display:flex;flex-wrap:wrap;gap:16px 20px;align-items:flex-end}.g-it{display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:6px}.g-cap{font-size:11px;color:#9a9a9a;line-height:14px;white-space:nowrap}.g-label i{font-style:normal;color:#b5b5b5;margin-left:4px}.g-sec{max-width:100%}.g-sec .g-mx+.g-mx{margin-top:10px}.g-mx{display:grid;gap:14px 16px;align-items:center;justify-items:center;width:max-content}.g-mh{font-size:12px;color:#8a8a8a;white-space:nowrap}.g-rh{font-size:12px;color:#8a8a8a;justify-self:start;white-space:nowrap;padding-right:8px}.g-cell{display:flex;align-items:center;justify-content:center;min-height:44px;padding:4px}button{font-family:inherit}.g.own{min-height:200px;align-items:center;justify-content:center}body[data-force] .g{pointer-events:none}body[data-force=hover] .g :is(button,input,select,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.94)}body[data-force=pressed] .g :is(button,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.86)}body[data-force=disabled] .g{opacity:.4}body[data-force=focus] .g :is(button,input){box-shadow:0 0 0 2px #fff,0 0 0 4px var(--p)}</style>';
-        const js = '<scr' + 'ipt>document.addEventListener("click",function(e){var t=e.target.closest("[data-toggle]");if(t&&!t.disabled){t.classList.toggle("on");return}var it=e.target.closest("[data-item]");if(it&&!it.disabled){var g=it.closest("[data-group]");g&&g.querySelectorAll("[data-item]").forEach(function(x){x.classList.toggle("on",x===it)})}});</scr' + 'ipt>';
-        return '<!doctype html><html><head>' + head + kit + '</head><body>' + html.code + js + fit + '</body></html>';
-      }
-      if (html) return '<!doctype html><html><head>' + head + '</head><body>' + html.code + fit + '</body></html>';
-
-      const jsx = files.filter(f => /^(tsx|jsx)$/.test(f.lang));
-      const norm = it.id.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const main = jsx.find(f => f.path.toLowerCase().replace(/[^a-z0-9/]/g, "").split("/").pop().startsWith(norm)) || jsx[0];
-      let mainName = null;
-      const code = jsx.map(f => {
-        let c = f.code.replace(/^\s*import[^;]*?from\s*['"][^'"]+['"];?\s*$/gm, "").replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, "");
-        const m = c.match(/export\s+default\s+(?:function|class)\s+(\w+)/) || c.match(/export\s+default\s+(\w+)\s*;?/);
-        if (f === main && m) mainName = m[1];
-        return c.replace(/export\s+default\s+(function|class)\s+/g, "$1 ").replace(/export\s+default\s+\w+\s*;?/g, "")
-          .replace(/export\s+(const|let|function|class|interface|type|enum)\s/g, "$1 ").replace(/export\s*\{[^}]*\}\s*;?/g, "");
-      }).join("\n");
-      const p = {};
-      Object.entries(props || {}).forEach(([k, v]) => { if (!k.startsWith("__") && k !== "scenario") p[k] = v === "true" ? true : v === "false" ? false : v; });
-      return `<!doctype html><html><head>${head}
-        <script src="${CDN.react}"><\/script><script src="${CDN.dom}"><\/script><script src="${CDN.babel}"><\/script></head>
-        <body><div id="root"></div>${fit}
-        <script>
-          try {
-            const { useState, useEffect, useRef, useMemo, useCallback, forwardRef, Fragment } = React;
-            const src = ${JSON.stringify(code)} + "\\n;window.__C = typeof ${mainName || "undefined"} !== 'undefined' ? ${mainName || "undefined"} : null;";
-            const out = Babel.transform(src, { filename: "c.tsx", presets: [["typescript", { isTSX: true, allExtensions: true }], "react"] }).code;
-            new Function("React", "useState", "useEffect", "useRef", "useMemo", "useCallback", "forwardRef", "Fragment", out)(React, useState, useEffect, useRef, useMemo, useCallback, forwardRef, Fragment);
-            if (!window.__C) throw new Error("未找到默认导出的组件");
-            ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(window.__C, Object.assign({ children: ${JSON.stringify(it.name.split(" ")[1] || it.name)} }, ${JSON.stringify(p)})));
-          } catch (e) { document.body.innerHTML = '<div class="cp-err">组件源码渲染失败：' + e.message + '</div>'; }
-        <\/script></body></html>`;
-    }
-
-    /* 把属性驱动的单个实例按「每个属性一行」复制成全部变体（ai 模式） */
-    function expandVariants(doc, it, ax, scale) {
-      scale = scale || 1;
-      const wrap = doc.querySelector(".g.own"), tpl = wrap && wrap.querySelector("[data-c]");
-      if (!tpl) return;
-      const sk = (it.interaction || {}).stateAxis;
-      const set = (el, props) => Object.entries(props).forEach(([k, v]) => {
-        if (k.startsWith("__") || k === "scenario" || k === sk) return;
-        el.setAttribute("data-" + k.toLowerCase(), String(v).toLowerCase());
-      });
-      const item = (props, cap, force, attr) => {
-        const el = tpl.cloneNode(true); set(el, props);
-        if (scale !== 1) el.style.zoom = scale;
-        if (force && force !== "rest") el.setAttribute("data-force", force);
-        if (attr) el.setAttribute("data-" + attr, "true");
-        const f = doc.createElement("div"); f.className = "g-it";
-        f.appendChild(el);
-        const c = doc.createElement("span"); c.className = "g-cap"; c.textContent = cap; f.appendChild(c);
-        return f;
-      };
-      const sec = (label, els) => { const s = doc.createElement("div"); s.className = "g-sec"; s.innerHTML = '<div class="g-label">' + label + '</div><div class="g-row"></div>'; els.forEach(e => s.lastChild.appendChild(e)); return s; };
-      wrap.innerHTML = "";
-      wrap.classList.remove("own");
-      const tg = (it.interaction || {}).toggleAxis, tAxis = tg && ax.axes.find(x => x.k === tg);
-      ax.axes.filter(a => !(ax.states.length && a === tAxis)).forEach(a => wrap.appendChild(sec(esc(a.label) + " <i>" + esc(a.k) + "</i>", a.values.map(v => item(Object.assign({}, ax.base, { [a.k]: v }), v)))));
-      if (ax.states.length) {
-        const rows = tAxis ? tAxis.values.map(v => ({ label: esc(tAxis.label) + " " + esc(v), p: Object.assign({}, ax.base, { [tg]: v }) })) : [{ label: "", p: ax.base }];
-        const cell = (p, x) => {
-          const c = doc.createElement("div"); c.className = "g-cell";
-          const el = tpl.cloneNode(true); set(el, p);
-          if (scale !== 1) el.style.zoom = scale;
-          if (x.force && x.force !== "rest") el.setAttribute("data-force", x.force);
-          if (x.attr) el.setAttribute("data-" + x.attr, "true");
-          c.appendChild(el); return c;
-        };
-        const head = (cls, html) => { const h = doc.createElement("span"); h.className = cls; h.innerHTML = html; return h; };
-        const matrix = states => {
-          const mx = doc.createElement("div"); mx.className = "g-mx";
-          mx.style.gridTemplateColumns = (tAxis ? "auto " : "") + "repeat(" + states.length + ", max-content)";
-          if (tAxis) mx.appendChild(head("", ""));
-          states.forEach(x => mx.appendChild(head("g-mh", esc(x.label))));
-          rows.forEach(r => { if (tAxis) mx.appendChild(head("g-rh", r.label)); states.forEach(x => mx.appendChild(cell(r.p, x))); });
-          return mx;
-        };
-        const s2 = doc.createElement("div"); s2.className = "g-sec";
-        s2.innerHTML = '<div class="g-label">' + esc(ax.stateLabel) + " <i>" + esc(sk || "state") + "</i>" + '</div>';
-        wrap.appendChild(s2);
-        const fits = () => [...s2.querySelectorAll(".g-mx")].every(m => m.scrollWidth <= wrap.clientWidth + 2);
-        for (let per = ax.states.length; per >= 1; per--) {
-          s2.querySelectorAll(".g-mx").forEach(m => m.remove());
-          for (let k = 0; k < ax.states.length; k += per) s2.appendChild(matrix(ax.states.slice(k, k + per)));
-          if (fits()) break;
-        }
-      }
     }
 
     /* token 推导预览：点击可交互 */
@@ -863,9 +751,8 @@
       const it = ds.components.items[i], row = document.getElementById("cmp-" + i);
       if (!row) return;
       const mode = previewMode(it);
-      const ax = variantAxes(it);
       let previewHtml;
-      if (mode === "ai" || mode === "source") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
+      if (mode === "url") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
       else if (mode === "shot") previewHtml = '<div class="ct-shots">' + it.variants.slice(0, 8).map(v => '<img src="' + dsDataDir(ds) + "/" + v.image + '" alt="" title="' + esc(Object.values(v.props).join(" · ")) + '">').join("") + '</div>';
       else if (mode === "token") previewHtml = '<div class="pv live">' + pvPreview(it.id, defaultsFor(it)) + '</div>';
       else {
@@ -879,22 +766,10 @@
         '</div>' +
         '<div class="ct-preview">' + previewHtml + '</div>';
 
-      if (mode === "ai" || mode === "source") {
-        const f = $(".cp-frame", row);
-        f.onload = () => {
-          try {
-            const doc = f.contentDocument, b = doc.body;
-            if (mode === "ai") expandVariants(doc, it, ax, mobileScale(ds));
-            const fit = () => { f.style.height = Math.min(b.scrollHeight, 1200) + "px"; };
-            fit(); new ResizeObserver(fit).observe(b);
-            if ((it.interaction || {}).toggleAxis) doc.addEventListener("click", e => {
-              const el = e.target.closest("[data-c]"); if (!el || el.hasAttribute("data-force")) return;
-              const a = it.interaction.toggleAxis.toLowerCase(), vals = [...new Set(it.variants.map(v => String(v.props[it.interaction.toggleAxis]).toLowerCase()))];
-              el.setAttribute("data-" + a, vals[(vals.indexOf(el.getAttribute("data-" + a)) + 1) % vals.length]);
-            });
-          } catch (e) { /* 保持默认高度 */ }
-        };
-        f.srcdoc = sandboxDoc(it, Object.assign({}, ax.base), ds, i);
+      if (mode === "url") {
+        /* 组件 html 直连后端 /static 资产（iframe src=URL，源码不写进 iframe）；
+           大 html（code 未内嵌为 $file 引用）同样可直连渲染 */
+        $(".cp-frame", row).src = assetUrl(realJsonBase(JSON_URL), htmlFile(it.source).path);
       } else if (mode === "token") {
         row.querySelector(".pv").addEventListener("click", e => { const t = e.target.closest("[data-tg]"); if (t) previewClick(t); });
       }
@@ -921,12 +796,15 @@
 
     function rComponents(box, ds, mapping) {
       const c = ds.components;
-      box.innerHTML = sectionShell("components", c.title, esc(c.desc)) +
+      const items = c.items || [];
+      /* 头部固定格式：组件 / 组件 / N 个 HTML 组件契约，M 个按规范自带的组件预览页渲染（URL 直连数） */
+      const rendered = items.filter(it => previewMode(it) === "url").length;
+      box.innerHTML = sectionShell("components", "组件", items.length + " 个 HTML 组件契约，" + rendered + " 个按规范自带的组件预览页渲染。") +
         '<div class="ct-table">' +
         '<div class="ct-row ct-th"><div>名称</div><div>预览</div></div>' +
-        c.items.map((it, i) => '<div class="ct-row cp-block" id="cmp-' + i + '" data-cmp-block="' + i + '"></div>').join("") +
+        items.map((it, i) => '<div class="ct-row cp-block" id="cmp-' + i + '" data-cmp-block="' + i + '"></div>').join("") +
         '</div>';
-      c.items.forEach((it, i) => paintRow(box, ds, mapping, i));
+      items.forEach((it, i) => paintRow(box, ds, mapping, i));
     }
 
     /* ---------- 资产（demo rAssets 移植，成员视角） ---------- */
@@ -1004,41 +882,53 @@
       };
     }
 
-    /* ---------- Pattern ---------- */
-    function patternDoc(ds, state, key, bg) {
-      const vars = themeVars(deriveTheme(ds));
-      const fit = '<scr' + 'ipt>new ResizeObserver(()=>parent.postMessage({cpFrame:"' + key + '",h:document.body.scrollHeight},"*")).observe(document.body);</scr' + 'ipt>';
-      return '<!doctype html><html><head><meta charset="utf-8"><style>:root{' + vars + '}html,body{margin:0}body{background:' + bg + '}</style></head><body>' + state.html + fit + '</body></html>';
+    /* ---------- Pattern（视觉基线引导 + 表格展示；iframe src 只直连 /static 真实页面） ---------- */
+    /* pattern 条目（导航与表格共用同一份，保证索引一致）：items[].id ↔ cards[].id 匹配，
+       路径来源 $file / state.meta / item.label（均为 zip 内路径 assets/patterns/**.html）；
+       v3：assets/patterns 每个 html 文件一个 card state，后端已解压落盘可 /static 直连 */
+    function patternEntries(ds) {
+      const p = ds.patterns;
+      if (!p) return [];
+      const view = p.view || {};
+      const isPath = s => typeof s === "string" && /\.html?$/i.test(s.trim()) && !/[<>:"|]/.test(s);
+      const statePath = (st, card) => {
+        if (st.html && st.html.$file) return st.html.$file;
+        if (isPath(st.meta)) return st.meta.trim();
+        const it = (p.items || []).find(x => x && x.id === card.id && isPath(x.label));
+        return it ? it.label.trim() : null;
+      };
+      const entries = [];
+      if (view.html && view.html.$file) {
+        const u = assetUrl(realJsonBase(JSON_URL), view.html.$file);
+        if (u) entries.push({ name: p.title || "Pattern", group: null, url: u });
+      } else (view.cards || []).forEach(card => Object.values(card.states || {}).forEach(st => {
+        const u = st && assetUrl(realJsonBase(JSON_URL), statePath(st, card));
+        if (!u) return;
+        const it = (p.items || []).find(x => x && x.id === card.id);
+        entries.push({ name: (it && it.name) || card.id || "Pattern", group: (it && it.group) || null, url: u });
+      }));
+      return entries;
     }
 
     function rPatterns(box, ds) {
       const p = ds.patterns;
-      const view = p.view || {}, bg = view.bg || "#fff";
-      box.innerHTML = sectionShell("patterns", p.title || "Pattern", esc(p.desc)) +
-        '<div class="sub-block"><div class="props">视图源码：' + esc((view.html || {}).$file || "—") + ((view.css || {}).$file ? ' · 样式：' + esc(view.css.$file) : "") + '</div></div>' +
-        (p.items || []).map(it => '<div class="sub-block">' +
-          '<div class="sub-title">' + esc(it.name) + (it.label ? '<small>' + esc(it.label) + '</small>' : "") + '</div>' +
-          '<div class="props">适用：' + esc(it.workflow || "—") + ' · 最小窗口：' + esc(it.minWindow || "—") + (it.extends ? ' · 扩展自：' + esc(it.extends) : "") + (it.titleLayer ? ' · ' + esc(it.titleLayer) : "") + '</div>' +
-          '<div class="props">区域（' + (it.regions || []).length + '）：' + (it.regions || []).map(r => esc(r.label) + '（' + esc(r.width) + ' · ' + esc(r.surface) + ' · ' + esc(r.scroll) + '）').join(" → ") + '</div>' +
-          '<div class="props" title="' + esc((it.slots || []).map(s => s.id + " · " + s.owner + " · " + s.cardinality + (s.allowed ? " · 允许 " + s.allowed : "")).join("\n")) + '">槽位（' + (it.slots || []).length + '）：' + (it.slots || []).map(s => esc(s.id) + "：" + esc(s.owner) + " ×" + esc(s.cardinality) + (s.allowed ? "（" + esc(s.allowed) + "）" : "")).join(" · ") + '</div>' +
-          (it.tab ? '<div class="props">标签：' + esc(it.tab) + (it.previewNote ? ' · ' + esc(it.previewNote) : "") + '</div>' : "") +
-          '</div>').join("") +
-        '<div class="sub-block"><div class="sub-title">预览卡片</div>' +
-        (view.cards || []).map(card => {
-          const states = Object.entries(card.states || {});
-          return '<div class="sub-block"><div class="sub-title">' + esc(card.id) + '<small>' + states.length + ' 个状态</small></div>' +
-            states.map(([sk, st]) => {
-              const fid = "pat-" + sk.replace(/[^a-z0-9]/gi, "");
-              if (typeof st.html === "string") return '<div class="props">' + esc(sk) + ' · ' + esc(st.meta || "") + '</div><iframe class="cp-frame" data-frame="' + fid + '" sandbox="allow-scripts allow-same-origin" title="' + esc(sk) + '"></iframe>';
-              return '<div class="props">' + esc(sk) + ' · ' + esc(st.meta || "") + (st.html && st.html.$file ? ' · 源码未随包提供（' + esc(st.html.$file) + '）' : "") + '</div>';
-            }).join("") + '</div>';
-        }).join("") + '</div>';
-      (view.cards || []).forEach(card => Object.entries(card.states || {}).forEach(([sk, st]) => {
-        if (typeof st.html !== "string") return;
-        const fid = "pat-" + sk.replace(/[^a-z0-9]/gi, "");
-        const f = $('.cp-frame[data-frame="' + fid + '"]', box);
-        if (f) f.srcdoc = patternDoc(ds, st, fid, bg);
-      }));
+      const entries = patternEntries(ds);
+      if (!entries.length) { box.innerHTML = emptyState(ds, "patterns"); return; }
+      /* 与组件表格同款：名称（去目录前缀，垂直居中）| 预览（iframe src 直连，固定 160px 内部滚动） */
+      box.innerHTML = sectionShell("patterns", p.title || "布局 Pattern", esc(p.desc)) +
+        '<div class="pt-baseline">' +
+          '<div class="pt-base-head"><h3>Pattern 视觉基线</h3><span class="pt-base-tag"><i></i>组合层 · 不计入组件目录</span></div>' +
+          '<p class="pt-base-desc">组件只能填入 Pattern 声明的槽位，不得改变栏顺序、宽度策略、表面、分割线或滚动归属。</p>' +
+        '</div>' +
+        '<div class="ct-table pt-table">' +
+          '<div class="ct-row ct-th"><div>名称</div><div>预览</div></div>' +
+          entries.map((e, i) =>
+            '<div class="ct-row" id="patr-' + i + '" data-patr-block="' + i + '">' +
+              '<div class="ct-name"><div class="nm" title="' + esc(e.name) + '">' + esc(compRowName(e)) + '</div></div>' +
+              '<div class="ct-preview"><iframe class="cp-frame" data-frame="p' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(e.name) + '"></iframe></div>' +
+            '</div>').join("") +
+        '</div>';
+      entries.forEach((e, i) => { $('.cp-frame[data-frame="p' + i + '"]', box).src = e.url; });
     }
 
     /* ================= 页面组装 ================= */
@@ -1049,6 +939,8 @@
       const app = document.getElementById("app");
       const compItems = (ds.components && ds.components.items) || [];
       const compNav = compNavGroups(compItems);
+      const patItems = patternEntries(ds);
+      const patNav = compNavGroups(patItems);
       // 头部（面包屑/标题/作者/调用量/预览量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据；
       // 固定菜单恒渲染，无数据的区块（组件/Pattern 等）以空态展示；「布局与适配」第一期隐藏
       app.innerHTML =
@@ -1068,6 +960,19 @@
                   compNav.loose.map(it => { const i = compItems.indexOf(it); return '<button data-cmp="' + i + '">' + esc(compRowName(it)) + '</button>'; }).join("") +
                 '</div></div>';
             }
+            if (s.key === "patterns" && patItems.length) {
+              /* Pattern 目录导航（与组件同款）：类目二级菜单（可折叠）→ Pattern 三级菜单；无目录的直接平铺 */
+              return '<div class="nav-grp">' +
+                '<button data-sec="patterns">' + ic + 'Pattern' + CHEV_ICON + '</button>' +
+                '<div class="nav-sub">' +
+                  patNav.groups.map(g =>
+                    '<div class="nav-category" data-nav-cat="' + esc(g.label) + '">' +
+                      '<button class="sub-h" data-cat="' + esc(g.label) + '"><span>' + esc(g.label) + '</span>' + CAT_CHEV_ICON + '</button>' +
+                      '<div class="nav-cat-items">' + g.items.map(it => { const i = patItems.indexOf(it); return '<button class="sub-l2" data-pat="' + i + '" title="' + esc(compRowName(it)) + '">' + esc(compRowName(it)) + '</button>'; }).join("") + '</div>' +
+                    '</div>').join("") +
+                  patNav.loose.map(it => { const i = patItems.indexOf(it); return '<button data-pat="' + i + '">' + esc(compRowName(it)) + '</button>'; }).join("") +
+                '</div></div>';
+            }
             return '<button data-sec="' + s.key + '">' + ic + s.label + '</button>';
           }).join("") + '</nav>' +
           '<div class="main" id="main" style="' + themeVars(deriveTheme(ds)) + '">' + SECTIONS.map(s =>
@@ -1080,9 +985,8 @@
       const main = document.getElementById("main");
       let scrollLock = false;
 
-      /* 组件默认展开：一级菜单 + 全部类目（用户可手动折叠，切到其他菜单不打扰展开状态） */
-      const compGrp = nav.querySelector(".nav-grp");
-      if (compGrp) compGrp.classList.add("open");
+      /* 组件/Pattern 默认展开：一级菜单 + 全部类目（用户可手动折叠，切到其他菜单不打扰展开状态） */
+      nav.querySelectorAll(".nav-grp").forEach(g => g.classList.add("open"));
       nav.querySelectorAll(".nav-category").forEach(cat => cat.classList.add("open"));
 
       function offsetIn(parent, el) { return el.getBoundingClientRect().top - parent.getBoundingClientRect().top + parent.scrollTop; }
@@ -1097,7 +1001,20 @@
           const idx = Number(sub.dataset.cmp);
           const blk = document.getElementById("cmp-" + idx);
           if (blk) {
-            setNav("components", idx);
+            setNav("components", idx, null);
+            scrollLock = true;
+            main.scrollTo({ top: offsetIn(main, blk) - 24, behavior: "smooth" });
+            clearTimeout(main._unlock);
+            main._unlock = setTimeout(() => { scrollLock = false; }, 700);
+          }
+          return;
+        }
+        const patBtn = e.target.closest("[data-pat]");
+        if (patBtn) {
+          const idx = Number(patBtn.dataset.pat);
+          const blk = document.getElementById("patr-" + idx);
+          if (blk) {
+            setNav("patterns", null, idx);
             scrollLock = true;
             main.scrollTo({ top: offsetIn(main, blk) - 24, behavior: "smooth" });
             clearTimeout(main._unlock);
@@ -1115,12 +1032,13 @@
         }
       });
 
-      function setNav(sec, cmp) {
-        nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null));
+      function setNav(sec, cmp, pat) {
+        nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null && pat == null));
         nav.querySelectorAll("[data-cmp]").forEach(b => b.classList.toggle("on", sec === "components" && Number(b.dataset.cmp) === cmp));
-        /* 滚动到组件区时高亮所在类目（sub-h），但不改变类目的展开/折叠状态（用户手动控制） */
+        nav.querySelectorAll("[data-pat]").forEach(b => b.classList.toggle("on", sec === "patterns" && Number(b.dataset.pat) === pat));
+        /* 滚动到组件/Pattern 区时高亮所在类目（sub-h），但不改变类目的展开/折叠状态（用户手动控制） */
         nav.querySelectorAll(".nav-category").forEach(cat => {
-          const active = cat.querySelector('[data-cmp].on');
+          const active = cat.querySelector('[data-cmp].on, [data-pat].on');
           const h = cat.querySelector(".sub-h");
           if (h) h.classList.toggle("on", !!active);
         });
@@ -1136,16 +1054,22 @@
         });
         const atEnd = main.scrollTop + main.clientHeight >= main.scrollHeight - 2;
         if (atEnd && SECTIONS.length) curKey = SECTIONS[SECTIONS.length - 1].key;
-        let cmp = null;
+        let cmp = null, pat = null;
         if (curKey === "components") {
           compItems.forEach((it, i) => {
             const blk = document.getElementById("cmp-" + i);
             if (blk && offsetIn(main, blk) <= top + 40) cmp = i;
           });
         }
-        setNav(curKey, cmp);
+        if (curKey === "patterns") {
+          patItems.forEach((it, i) => {
+            const blk = document.getElementById("patr-" + i);
+            if (blk && offsetIn(main, blk) <= top + 40) pat = i;
+          });
+        }
+        setNav(curKey, cmp, pat);
       });
-      if (SECTIONS.length) setNav(SECTIONS[0].key, null);
+      if (SECTIONS.length) setNav(SECTIONS[0].key, null, null);
 
       /* 返回：面包屑箭头 + "设计系统"文字 */
       // 返回已由展示端外层壳的面包屑处理（navigate），模板内不再有头部/返回逻辑
@@ -1167,6 +1091,7 @@
         showError(new Error("缺少数据源 jsonUrl：请从设计系统展示端进入本页"));
         return Promise.resolve();
       }
+      JSON_URL = jsonUrl;   // 记录给资产直连 URL 推导（realJsonBase/assetUrl）
       return fetch(jsonUrl)
         .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(ds => { ds.id = ds.id || id; buildPage(ds, meta || {}, {}); });
@@ -1194,13 +1119,6 @@
         '<div class="error">本页需由设计系统展示端打开（数据由展示端经 api1 的 json_url 注入），请从展示端列表进入。</div>';
     }
 
-    /* 组件沙箱 iframe 高度自适应 */
-    window.addEventListener("message", e => {
-      const d = e.data || {};
-      if (d.cpFrame == null) return;
-      const f = document.querySelector('.cp-frame[data-frame="' + d.cpFrame + '"]');
-      if (f) f.style.height = Math.max(120, Math.min(d.h, 600)) + "px";
-    });
   </script>
 </body>
 </html>

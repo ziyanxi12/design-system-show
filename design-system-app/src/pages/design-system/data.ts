@@ -12,6 +12,8 @@ export type DsMeta = {
   cover?: string
   /** 封面完整 URL（api1 的 cover_url） */
   coverImg?: string
+  /** 图标完整 URL（api1 的 icon_url，未自定义时后端回落内置默认图标，恒有值） */
+  iconUrl?: string
   /** design-system.json 完整 URL（api1 的 json_url，详情页数据源） */
   jsonUrl?: string
   default?: boolean
@@ -47,6 +49,7 @@ type ApiItem = {
   views?: number
   cover?: string
   cover_url: string
+  icon_url: string
   json_url: string
   default?: boolean
 }
@@ -85,6 +88,7 @@ fetch(`${API_BASE}/api/design-systems`)
           views: i.views,
           cover: i.cover,
           coverImg: i.cover_url,
+          iconUrl: i.icon_url,
           jsonUrl: i.json_url,
           default: i.default,
         },
