@@ -696,8 +696,8 @@
       return "none";
     }
 
-    /* 行高：items[].height（后端默认 160，预留修正通道），脏数据夹取 80–1200 */
-    const rowHeight = it => Math.min(1200, Math.max(80, Math.round(Number(it && it.height) || 160)));
+    /* 行高：json 里是什么就多高（items[].height 原值直用，不夹取），仅缺省/非法值回落 160 */
+    const rowHeight = it => Number(it && it.height) || 160;
 
     /* token 推导预览：点击可交互 */
     function previewClick(t) {
