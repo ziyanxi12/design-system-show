@@ -233,9 +233,12 @@
     .ct-name .nm { font-size: 15px; font-weight: 500; color: var(--text-primary); }
     .ct-name .props { margin-top: 6px; font-size: 12px; color: var(--text-3); line-height: 18px; }
     .ct-name .src-badge { margin-top: 10px; }
-    .ct-preview { padding: 0 !important; }
-    .ct-preview .cp-frame { width: 100%; min-height: 120px; border: 0; display: block; }
-    .ct-preview > .pv, .ct-preview > .ct-shots, .ct-preview > .ct-empty { margin: 20px; }
+    .ct-name { display: flex; flex-direction: column; justify-content: center; }
+    .ct-preview { padding: 0 !important; height: 160px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .ct-preview .cp-frame { width: 100%; height: 160px; border: 0; display: block; }
+    .ct-preview > .pv, .ct-preview > .ct-shots, .ct-preview > .ct-empty { margin: 0 20px; }
+    /* Pattern 整帧预览（参照 demo pt-view）：宽度撑满、白底描边圆角，父页按宽屏排版量高 */
+    .pt-view { display: block; width: 100%; height: 600px; border: 0; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06); margin-top: 20px; }
     .ct-shots { display: flex; flex-wrap: wrap; gap: 8px; }
     .ct-shots img { height: 56px; border-radius: 8px; background: #F2F3F5; transition: transform .15s; }
     .ct-shots img:hover { transform: scale(1.6); position: relative; z-index: 2; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
@@ -478,7 +481,8 @@
     }
 
     /* ================= 分区框架 ================= */
-    /* 九个固定菜单：无数据的区块以空态展示（数据没解析出来也保持菜单存在） */
+    /* 固定菜单：无数据的区块以空态展示（数据没解析出来也保持菜单存在）；
+       「布局与适配」第一期隐藏——导航项/主内容分区/滚动联动均由 SECTIONS 驱动，注释即整体下线，第二期恢复解注释即可 */
     const SECTIONS = [
       { key: "overview", label: "概览", icon: "sec-overview" },
       { key: "color", label: "颜色", icon: "sec-color" },
@@ -487,10 +491,12 @@
       { key: "radius", label: "圆角", icon: "sec-radius" },
       { key: "shadow", label: "阴影", icon: "sec-shadow" },
       { key: "components", label: "组件", icon: "sec-component" },
-      { key: "layout", label: "布局与适配", icon: "sec-layout" },
+      // { key: "layout", label: "布局与适配", icon: "sec-layout" },   // 第一期隐藏
       { key: "patterns", label: "Pattern", icon: "sec-layout" }
     ];
     const ui = { typeSample: "", spScene: 0, radScene: 0, assetSub: {}, assetShow: {}, assetQuery: "" };
+    /* 当前系统 design-system.json 地址（loadSystem 记录）：组件/Pattern 资产直连 URL 的推导依据 */
+    let JSON_URL = "";
 
     function sectionShell(sec, title, desc, tools) {
       return '<div class="sec-label">' + esc(SECTIONS.find(s => s.key === sec).label) + '</div>' +
@@ -700,9 +706,24 @@
     }
 
     const canRender = src => src.files.some(f => /^(html|tsx|jsx)$/.test(f.lang) && typeof f.code === "string");
+    const htmlFile = src => (src.files || []).find(f => f.lang === "html");
+    /* 资产直连 URL：jsonUrl 为真实地址（非 blob:/data:——管理台解析页注入的是 blob）时，
+       files[].path（zip 相对路径，含 assets/ 前缀）→ {jsonUrl 目录}/assets/**（后端 /static 直可访问）；
+       推导不出返回 null，调用方回落沙箱 Blob 文档 */
+    const realJsonBase = url => !url || /^(blob:|data:)/i.test(url) ? null : url.slice(0, url.lastIndexOf("/"));
+    function assetUrl(base, path) {
+      if (!base || !path) return null;
+      const m = String(path).match(/(?:^|\/)assets\/(.+)$/);
+      const rel = m ? m[1] : String(path).replace(/^\/+/, "");
+      if (!rel || /(^|\/)\.\.(\/|$)/.test(rel)) return null;
+      return base + "/assets/" + rel.split("/").map(encodeURIComponent).join("/");
+    }
     function previewMode(it) {
       const src = it.source || { status: "missing" };
-      if (src.status === "found" && canRender(src)) return "source";
+      if (src.status === "found") {
+        if (assetUrl(realJsonBase(JSON_URL), (htmlFile(src) || {}).path)) return "url";
+        if (canRender(src)) return "source";
+      }
       if (src.status === "generated") return "ai";
       if (it.variants) return "shot";
       if (TOKEN_PREVIEW.includes(it.id)) return "token";
@@ -720,19 +741,18 @@
       babel: "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"
     };
 
-    function sandboxDoc(it, props, ds, i) {
+    function sandboxDoc(it, props, ds) {
       const files = it.source.files;
       const css = files.filter(f => /^(css|scss)$/.test(f.lang)).map(f => typeof f.code === "string" ? f.code : "").join("\n");
       const vars = themeVars(deriveTheme(ds));
       const head = '<meta charset="utf-8"><style>:root{' + vars + '}html,body{margin:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:24px;box-sizing:border-box;font-family:"HarmonyOS Sans SC","PingFang SC",sans-serif}.cp-err{color:#E84026;font:12px/18px monospace;white-space:pre-wrap}' + css + '</style>';
-      const fit = '<scr' + 'ipt>new ResizeObserver(()=>parent.postMessage({cpFrame:' + i + ',h:document.body.scrollHeight},"*")).observe(document.body);</scr' + 'ipt>';
       const html = files.find(f => f.lang === "html");
       if (html && it.source.status === "generated") {
         const kit = '<style>body{display:block;min-height:0;padding:24px 28px}.g{display:flex;flex-direction:column;gap:20px}.g-sec{display:flex;flex-direction:column;gap:10px}.g-label{font-size:12px;color:#8a8a8a}.g-row{display:flex;flex-wrap:wrap;gap:16px 20px;align-items:flex-end}.g-it{display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:6px}.g-cap{font-size:11px;color:#9a9a9a;line-height:14px;white-space:nowrap}.g-label i{font-style:normal;color:#b5b5b5;margin-left:4px}.g-sec{max-width:100%}.g-sec .g-mx+.g-mx{margin-top:10px}.g-mx{display:grid;gap:14px 16px;align-items:center;justify-items:center;width:max-content}.g-mh{font-size:12px;color:#8a8a8a;white-space:nowrap}.g-rh{font-size:12px;color:#8a8a8a;justify-self:start;white-space:nowrap;padding-right:8px}.g-cell{display:flex;align-items:center;justify-content:center;min-height:44px;padding:4px}button{font-family:inherit}.g.own{min-height:200px;align-items:center;justify-content:center}body[data-force] .g{pointer-events:none}body[data-force=hover] .g :is(button,input,select,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.94)}body[data-force=pressed] .g :is(button,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.86)}body[data-force=disabled] .g{opacity:.4}body[data-force=focus] .g :is(button,input){box-shadow:0 0 0 2px #fff,0 0 0 4px var(--p)}</style>';
         const js = '<scr' + 'ipt>document.addEventListener("click",function(e){var t=e.target.closest("[data-toggle]");if(t&&!t.disabled){t.classList.toggle("on");return}var it=e.target.closest("[data-item]");if(it&&!it.disabled){var g=it.closest("[data-group]");g&&g.querySelectorAll("[data-item]").forEach(function(x){x.classList.toggle("on",x===it)})}});</scr' + 'ipt>';
-        return '<!doctype html><html><head>' + head + kit + '</head><body>' + html.code + js + fit + '</body></html>';
+        return '<!doctype html><html><head>' + head + kit + '</head><body>' + html.code + js + '</body></html>';
       }
-      if (html) return '<!doctype html><html><head>' + head + '</head><body>' + html.code + fit + '</body></html>';
+      if (html) return '<!doctype html><html><head>' + head + '</head><body>' + html.code + '</body></html>';
 
       const jsx = files.filter(f => /^(tsx|jsx)$/.test(f.lang));
       const norm = it.id.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -749,7 +769,7 @@
       Object.entries(props || {}).forEach(([k, v]) => { if (!k.startsWith("__") && k !== "scenario") p[k] = v === "true" ? true : v === "false" ? false : v; });
       return `<!doctype html><html><head>${head}
         <script src="${CDN.react}"><\/script><script src="${CDN.dom}"><\/script><script src="${CDN.babel}"><\/script></head>
-        <body><div id="root"></div>${fit}
+        <body><div id="root"></div>
         <script>
           try {
             const { useState, useEffect, useRef, useMemo, useCallback, forwardRef, Fragment } = React;
@@ -864,7 +884,7 @@
       const mode = previewMode(it);
       const ax = variantAxes(it);
       let previewHtml;
-      if (mode === "ai" || mode === "source") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
+      if (mode === "url" || mode === "ai" || mode === "source") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
       else if (mode === "shot") previewHtml = '<div class="ct-shots">' + it.variants.slice(0, 8).map(v => '<img src="' + dsDataDir(ds) + "/" + v.image + '" alt="" title="' + esc(Object.values(v.props).join(" · ")) + '">').join("") + '</div>';
       else if (mode === "token") previewHtml = '<div class="pv live">' + pvPreview(it.id, defaultsFor(it)) + '</div>';
       else {
@@ -878,22 +898,26 @@
         '</div>' +
         '<div class="ct-preview">' + previewHtml + '</div>';
 
-      if (mode === "ai" || mode === "source") {
+      if (mode === "url") {
+        /* 组件 html 直连后端 /static 资产（iframe src=URL，整段源码不再写进 srcdoc）；
+           大 html（code 未内嵌为 $file 引用）同样可直连渲染 */
+        $(".cp-frame", row).src = assetUrl(realJsonBase(JSON_URL), htmlFile(it.source).path);
+      } else if (mode === "ai" || mode === "source") {
+        /* 无直连 URL（管理台 blob jsonUrl / tsx 源码 / AI 生成）→ 沙箱文档转 Blob URL 走 src；
+           行高固定 160px（iframe 内部滚动），不再自适应 */
         const f = $(".cp-frame", row);
         f.onload = () => {
           try {
-            const doc = f.contentDocument, b = doc.body;
+            const doc = f.contentDocument;
             if (mode === "ai") expandVariants(doc, it, ax, mobileScale(ds));
-            const fit = () => { f.style.height = Math.min(b.scrollHeight, 1200) + "px"; };
-            fit(); new ResizeObserver(fit).observe(b);
             if ((it.interaction || {}).toggleAxis) doc.addEventListener("click", e => {
               const el = e.target.closest("[data-c]"); if (!el || el.hasAttribute("data-force")) return;
               const a = it.interaction.toggleAxis.toLowerCase(), vals = [...new Set(it.variants.map(v => String(v.props[it.interaction.toggleAxis]).toLowerCase()))];
               el.setAttribute("data-" + a, vals[(vals.indexOf(el.getAttribute("data-" + a)) + 1) % vals.length]);
             });
-          } catch (e) { /* 保持默认高度 */ }
+          } catch (e) { /* 同源访问异常时忽略 */ }
         };
-        f.srcdoc = sandboxDoc(it, Object.assign({}, ax.base), ds, i);
+        f.src = URL.createObjectURL(new Blob([sandboxDoc(it, Object.assign({}, ax.base), ds)], { type: "text/html" }));
       } else if (mode === "token") {
         row.querySelector(".pv").addEventListener("click", e => { const t = e.target.closest("[data-tg]"); if (t) previewClick(t); });
       }
@@ -920,12 +944,15 @@
 
     function rComponents(box, ds, mapping) {
       const c = ds.components;
-      box.innerHTML = sectionShell("components", c.title, esc(c.desc)) +
+      const items = c.items || [];
+      /* 头部固定格式：组件 / 组件 / N 个 HTML 组件契约，M 个按规范自带的组件预览页渲染（数据里的 title/desc 不展示） */
+      const rendered = items.filter(it => ["url", "source", "ai"].includes(previewMode(it))).length;
+      box.innerHTML = sectionShell("components", "组件", items.length + " 个 HTML 组件契约，" + rendered + " 个按规范自带的组件预览页渲染。") +
         '<div class="ct-table">' +
         '<div class="ct-row ct-th"><div>名称</div><div>预览</div></div>' +
-        c.items.map((it, i) => '<div class="ct-row cp-block" id="cmp-' + i + '" data-cmp-block="' + i + '"></div>').join("") +
+        items.map((it, i) => '<div class="ct-row cp-block" id="cmp-' + i + '" data-cmp-block="' + i + '"></div>').join("") +
         '</div>';
-      c.items.forEach((it, i) => paintRow(box, ds, mapping, i));
+      items.forEach((it, i) => paintRow(box, ds, mapping, i));
     }
 
     /* ---------- 资产（demo rAssets 移植，成员视角） ---------- */
@@ -1003,41 +1030,57 @@
       };
     }
 
-    /* ---------- Pattern ---------- */
-    function patternDoc(ds, state, key, bg) {
+    /* ---------- Pattern（布局组合页整帧预览，参照 demo rPatternView：标题/说明 + 大预览帧） ---------- */
+    function patternDoc(ds, st, bg, css) {
       const vars = themeVars(deriveTheme(ds));
-      const fit = '<scr' + 'ipt>new ResizeObserver(()=>parent.postMessage({cpFrame:"' + key + '",h:document.body.scrollHeight},"*")).observe(document.body);</scr' + 'ipt>';
-      return '<!doctype html><html><head><meta charset="utf-8"><style>:root{' + vars + '}html,body{margin:0}body{background:' + bg + '}</style></head><body>' + state.html + fit + '</body></html>';
+      return '<!doctype html><html style="background:' + bg + '"><head><meta charset="utf-8"><style>:root{' + vars + '}</style>' + (css ? '<style>' + css + '</style>' : '') + '</head><body style="margin:0;padding:24px;background:' + bg + '">' + st.html + '</body></html>';
     }
 
     function rPatterns(box, ds) {
       const p = ds.patterns;
-      const view = p.view || {}, bg = view.bg || "#fff";
-      box.innerHTML = sectionShell("patterns", p.title || "Pattern", esc(p.desc)) +
-        '<div class="sub-block"><div class="props">视图源码：' + esc((view.html || {}).$file || "—") + ((view.css || {}).$file ? ' · 样式：' + esc(view.css.$file) : "") + '</div></div>' +
-        (p.items || []).map(it => '<div class="sub-block">' +
-          '<div class="sub-title">' + esc(it.name) + (it.label ? '<small>' + esc(it.label) + '</small>' : "") + '</div>' +
-          '<div class="props">适用：' + esc(it.workflow || "—") + ' · 最小窗口：' + esc(it.minWindow || "—") + (it.extends ? ' · 扩展自：' + esc(it.extends) : "") + (it.titleLayer ? ' · ' + esc(it.titleLayer) : "") + '</div>' +
-          '<div class="props">区域（' + (it.regions || []).length + '）：' + (it.regions || []).map(r => esc(r.label) + '（' + esc(r.width) + ' · ' + esc(r.surface) + ' · ' + esc(r.scroll) + '）').join(" → ") + '</div>' +
-          '<div class="props" title="' + esc((it.slots || []).map(s => s.id + " · " + s.owner + " · " + s.cardinality + (s.allowed ? " · 允许 " + s.allowed : "")).join("\n")) + '">槽位（' + (it.slots || []).length + '）：' + (it.slots || []).map(s => esc(s.id) + "：" + esc(s.owner) + " ×" + esc(s.cardinality) + (s.allowed ? "（" + esc(s.allowed) + "）" : "")).join(" · ") + '</div>' +
-          (it.tab ? '<div class="props">标签：' + esc(it.tab) + (it.previewNote ? ' · ' + esc(it.previewNote) : "") + '</div>' : "") +
-          '</div>').join("") +
-        '<div class="sub-block"><div class="sub-title">预览卡片</div>' +
-        (view.cards || []).map(card => {
-          const states = Object.entries(card.states || {});
-          return '<div class="sub-block"><div class="sub-title">' + esc(card.id) + '<small>' + states.length + ' 个状态</small></div>' +
-            states.map(([sk, st]) => {
-              const fid = "pat-" + sk.replace(/[^a-z0-9]/gi, "");
-              if (typeof st.html === "string") return '<div class="props">' + esc(sk) + ' · ' + esc(st.meta || "") + '</div><iframe class="cp-frame" data-frame="' + fid + '" sandbox="allow-scripts allow-same-origin" title="' + esc(sk) + '"></iframe>';
-              return '<div class="props">' + esc(sk) + ' · ' + esc(st.meta || "") + (st.html && st.html.$file ? ' · 源码未随包提供（' + esc(st.html.$file) + '）' : "") + '</div>';
-            }).join("") + '</div>';
-        }).join("") + '</div>';
-      (view.cards || []).forEach(card => Object.entries(card.states || {}).forEach(([sk, st]) => {
-        if (typeof st.html !== "string") return;
-        const fid = "pat-" + sk.replace(/[^a-z0-9]/gi, "");
-        const f = $('.cp-frame[data-frame="' + fid + '"]', box);
-        if (f) f.srcdoc = patternDoc(ds, st, fid, bg);
+      const view = p.view || {}, bg = view.bg || "#f5f5f5";
+      const css = typeof view.css === "string" ? view.css : "";
+      /* v3：$file / state.meta / 同 id item.label 都可能携带 zip 内路径（assets/patterns/**.html）
+         —— 能推 URL 一律 src 直连，推不出（管理台 blob jsonUrl / 老数据纯内嵌）才回落 Blob */
+      const isPath = s => typeof s === "string" && /\.html?$/i.test(s.trim()) && !/[<>:"|]/.test(s);
+      const statePath = (st, card) => {
+        if (st.html && st.html.$file) return st.html.$file;
+        if (isPath(st.meta)) return st.meta.trim();
+        const it = (p.items || []).find(x => x && x.id === card.id && isPath(x.label));
+        return it ? it.label.trim() : null;
+      };
+      const frames = [];
+      const pushFrame = (html, path) => {
+        const url = path ? assetUrl(realJsonBase(JSON_URL), path) : null;
+        if (url || typeof html === "string") frames.push({ html: html, url: url });
+      };
+      /* view.html 整页优先（老结构）；否则逐 card.state（v3：assets/patterns 每个 html 文件一个 state） */
+      if (view.html) pushFrame(view.html, view.html && view.html.$file);
+      else (view.cards || []).forEach(card => Object.values(card.states || {}).forEach(st => {
+        if (st) pushFrame(st.html, statePath(st, card));
       }));
+      if (!frames.length) { box.innerHTML = emptyState(ds, "patterns"); return; }
+      box.innerHTML = sectionShell("patterns", p.title || "布局 Pattern", esc(p.desc)) +
+        frames.map((fr, i) => '<iframe class="pt-view" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(p.title || "Pattern") + '"></iframe>').join("");
+      frames.forEach((fr, i) => {
+        const f = $('.pt-view[data-frame="' + i + '"]', box);
+        if (fr.url) f.src = fr.url;
+        else if (typeof fr.html === "string") {
+          /* 完整文档原样直出（v3 pattern 文件即整页）；文档片段用 patternDoc 包装（bg + 主题变量） */
+          f.src = URL.createObjectURL(new Blob([/^\s*(<!doctype|<html)/i.test(fr.html) ? fr.html : patternDoc(ds, fr, bg, css)], { type: "text/html" }));
+        }
+        /* 同源帧按宽屏（≥960px）排版，卡片较窄时整体等比缩小，父页量高（demo rPatternView 同款） */
+        f.onload = () => {
+          try {
+            const doc = f.contentDocument, htmlEl = doc.documentElement;
+            const w = Math.max(960, f.clientWidth), scale = Math.min(1, f.clientWidth / w);
+            htmlEl.style.width = w + "px";
+            if (scale < 1) htmlEl.style.zoom = scale;
+            const fit = () => { f.style.height = Math.ceil(Math.max(doc.body.scrollHeight, 200) * (scale < 1 ? scale : 1)) + "px"; };
+            fit(); new ResizeObserver(fit).observe(doc.body);
+          } catch (e) { /* 同源访问异常时保持默认高度 */ }
+        };
+      });
     }
 
     /* ================= 页面组装 ================= */
@@ -1049,7 +1092,7 @@
       const compItems = (ds.components && ds.components.items) || [];
       const compNav = compNavGroups(compItems);
       // 头部（面包屑/标题/作者/调用量/预览量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据；
-      // 九个固定菜单恒渲染，无数据的区块（组件/布局与适配/Pattern 等）以空态展示
+      // 固定菜单恒渲染，无数据的区块（组件/Pattern 等）以空态展示；「布局与适配」第一期隐藏
       app.innerHTML =
         '<div class="body">' +
           '<nav class="nav" id="nav">' + SECTIONS.map(s => {
@@ -1166,6 +1209,7 @@
         showError(new Error("缺少数据源 jsonUrl：请从设计系统展示端进入本页"));
         return Promise.resolve();
       }
+      JSON_URL = jsonUrl;   // 记录给资产直连 URL 推导（realJsonBase/assetUrl）
       return fetch(jsonUrl)
         .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(ds => { ds.id = ds.id || id; buildPage(ds, meta || {}, {}); });
@@ -1193,13 +1237,6 @@
         '<div class="error">本页需由设计系统展示端打开（数据由展示端经 api1 的 json_url 注入），请从展示端列表进入。</div>';
     }
 
-    /* 组件沙箱 iframe 高度自适应 */
-    window.addEventListener("message", e => {
-      const d = e.data || {};
-      if (d.cpFrame == null) return;
-      const f = document.querySelector('.cp-frame[data-frame="' + d.cpFrame + '"]');
-      if (f) f.style.height = Math.max(120, Math.min(d.h, 600)) + "px";
-    });
   </script>
 </body>
 </html>
