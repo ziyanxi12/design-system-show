@@ -27,7 +27,8 @@
 >
 > 请求头：`X-User-Data`（AES-CBC 加密 `userInfo + loginTime`）；设计系统管理端点按
 > `DS_LOGIN_TTL_HOURS`（默认 24h）校验登录过期，超时/缺失 → `401 {"detail":"登录已过期，请重新登录"}`
-> ——豁免清单仅 `GET /api/design-systems`（列表）、`POST /{slug}/views`（7a 预览打点）、
+> ——豁免清单仅 `GET /api/design-systems`（列表）、`GET /{slug}`（1a 单条详情，展示端匿名可用）、
+> `POST /{slug}/views`（7a 预览打点）、
 > `POST /api/design-systems/usage/report`（7b 免登录态调用量上报）与
 > `POST /api/design-systems/events/refresh-identity`（7c 打点事件用户信息补全）。
 > `octo-vs-token` 仅 lib-resource 原有模块需要（`/api/resources`、`/api/export`、`/api/vector/*` 的
@@ -150,6 +151,18 @@ skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件�
   修正通道仅 PATCH 的 `views` 字段（API 层保留；**界面不提供编辑入口**，手动修正走此字段）
 - `created_by/updated_by` 为 account，`*_name` 为「昵称 account」显示名——直查 users 表解析，无记录时回落 account
 - 排序：`default` 置顶，其余按 `created_at` 倒序（slug 已随机化，字典序无意义）
+
+### 1a. GET /api/design-systems/{slug} —— 单条详情（api1 item 同构）
+
+展示端详情页数据源：返回与列表条目**完全同构**的单个 item（`format_item` 同一产物——
+name/desc/author/usage/views/cover/icon/各 URL/parts/file_size/时间等全字段）。
+
+- **匿名可访问**（登录过期豁免清单内，与列表接口同等待遇——展示端匿名浏览详情依赖）
+- slug 不存在 / 软删 → 404
+- 建议消费顺序：进页先 `POST /{slug}/views`（计入本次浏览）再 GET 本接口——返回的
+  `views` 已含本次浏览，头部一次渲染无「快照→自增」的数值跳变
+- 路由注册顺序保证管理静态路径不被单段路径参数劫持：`GET /operation-logs`（操作记录，
+  同 router 内先注册）、`GET /whitelist`（白名单，ds_whitelist router 先 include）
 
 ### 2. POST /api/design-systems —— 上传（五部件，全部可选、逐部件独立成败）
 

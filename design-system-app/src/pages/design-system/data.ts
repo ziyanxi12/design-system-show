@@ -39,8 +39,8 @@ export type DsEntry = {
   meta: DsMeta
 }
 
-/** api1 列表条目（对齐 requirement/api.md 契约） */
-type ApiItem = {
+/** api1 列表 / 1a 单条详情条目（对齐 requirement/api.md 契约，结构完全同构） */
+export type ApiItem = {
   slug: string
   name: string
   desc?: string
@@ -66,6 +66,22 @@ export const authorLabel = (a: AuthorEntry): string => {
   return (a.nickName || a.account || "").trim()
 }
 
+/** api1/1a item → 卡片 meta（列表注册表与详情页共用的同一映射） */
+export function itemToMeta(i: ApiItem): DsMeta {
+  return {
+    name: i.name,
+    desc: i.desc,
+    authors: Array.isArray(i.author) ? i.author : [],
+    usage: i.usage,
+    views: i.views,
+    cover: i.cover,
+    coverImg: i.cover_url,
+    iconUrl: i.icon_url,
+    jsonUrl: i.json_url,
+    default: i.default,
+  }
+}
+
 /**
  * 设计系统注册表 —— 纯 API 数据源（GET {API_BASE}/api/design-systems，API_BASE 由 .env 配置）：
  * 卡片来自 api1，详情用返回值里的 json_url 读 JSON 填充模板。
@@ -78,21 +94,7 @@ fetch(`${API_BASE}/api/design-systems`)
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
   .then((data: { count: number; items: ApiItem[] }) => {
     setRegistry(
-      (data.items ?? []).map((i) => ({
-        id: i.slug,
-        meta: {
-          name: i.name,
-          desc: i.desc,
-          authors: Array.isArray(i.author) ? i.author : [],
-          usage: i.usage,
-          views: i.views,
-          cover: i.cover,
-          coverImg: i.cover_url,
-          iconUrl: i.icon_url,
-          jsonUrl: i.json_url,
-          default: i.default,
-        },
-      })),
+      (data.items ?? []).map((i) => ({ id: i.slug, meta: itemToMeta(i) })),
     )
     setLoadState("ready")
   })
