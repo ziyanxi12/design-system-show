@@ -52,7 +52,7 @@ export default function DesignSystemDetail(props: { id: string }): JSX.Element {
       fetch(`${API_BASE}/api/design-systems/${props.id}/views`, { method: "POST", headers })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
         .then((d: { views?: number }) => { if (typeof d.views === "number") setViews(d.views) })
-        .catch(() => {})
+        .catch((e) => console.warn("[views] 打点失败:", e))
     })()
   })
   onCleanup(() => window.removeEventListener("message", onMessage))
