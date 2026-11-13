@@ -20,7 +20,8 @@ render(
   () => (
     <HashRouter root={App}>
       <Route path="/" component={() => <Navigate href="/design-system" />} />
-      <Route path="/design-system/:id?" component={DesignSystemPage} />
+      {/* :id? 列表页；:section?/:item? 深链段（如 /design-system/{slug}/components/button） */}
+      <Route path="/design-system/:id?/:section?/:item?" component={DesignSystemPage} />
     </HashRouter>
   ),
   document.getElementById("root")!

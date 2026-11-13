@@ -2,7 +2,7 @@ import { createEffect, createSignal, on, onCleanup, onMount, For, Show } from "s
 import type { JSX } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { getDsData, faceUrl, authorLabel, type DsData } from "./data"
-import { getEncryptedUserData } from "../../utils/auth"
+import { getEncryptedUserData, getUserInfo } from "../../utils/auth"
 import { API_BASE } from "../../config"
 
 const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 10 10" fill="none"><path d="M6 1L2 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -21,7 +21,7 @@ const VIEWS_ICON = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" s
  *   ← postMessage {type:"ds-ready"}
  *   postMessage {type:"ds-data", data:{id, meta}}（meta.jsonUrl 为模板唯一数据源）
  */
-export default function DesignSystemDetail(props: { id: string }): JSX.Element {
+export default function DesignSystemDetail(props: { id: string; section?: string; item?: string }): JSX.Element {
   const navigate = useNavigate()
   const [loaded, setLoaded] = createSignal(false)
   /** 预览量：详情页每次加载 +1（/views 接口返回值即时显示；失败回落 api1 快照） */
@@ -33,7 +33,16 @@ export default function DesignSystemDetail(props: { id: string }): JSX.Element {
     const type = (e.data as { type?: string } | null)?.type
     if (type === "ds-ready") {
       const ent = getDsData(props.id)
-      if (ent) (e.source as Window).postMessage({ type: "ds-data", data: { id: props.id, meta: ent.meta } }, "*")
+      /* 深链段（#/design-system/{id}/{section}/{item}）随数据一起注入模板，渲染完直跳对应分区/条目 */
+      if (ent) (e.source as Window).postMessage({
+        type: "ds-data",
+        data: { id: props.id, meta: ent.meta, deep: props.section || props.item ? { section: props.section, item: props.item } : undefined },
+      }, "*")
+    } else if (type === "ds-scroll") {
+      /* 模板滚动/点导航上报当前位置 → replaceState 实时跟随（不触发 hashchange，不影响路由、不刷历史） */
+      const d = (e.data as { section?: string; item?: string } | null) || {}
+      const hash = "#/design-system/" + props.id + (d.section ? "/" + d.section : "") + (d.item ? "/" + d.item : "")
+      if (location.hash !== hash) history.replaceState(null, "", hash)
     }
   }
 
@@ -48,7 +57,8 @@ export default function DesignSystemDetail(props: { id: string }): JSX.Element {
       try {
         const userData = await getEncryptedUserData()
         if (userData) headers["X-User-Data"] = userData
-      } catch { /* 加密失败 → 匿名 */ }
+        else console.info("[views] 匿名打点：", getUserInfo() ? "加密返回空串（AES key 未注入前端构建）" : "当前源无登录态（localStorage.userInfo 为空或缺 account/nickName）")
+      } catch (e) { console.warn("[views] 加密失败 → 匿名:", e) }
       fetch(`${API_BASE}/api/design-systems/${props.id}/views`, { method: "POST", headers })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
         .then((d: { views?: number }) => { if (typeof d.views === "number") setViews(d.views) })
@@ -64,6 +74,17 @@ export default function DesignSystemDetail(props: { id: string }): JSX.Element {
       () => props.id,
       () => {
         try { iframe?.contentWindow?.location.reload() } catch { /* 同源才能 reload，异常时忽略 */ }
+      },
+      { defer: true },
+    ),
+  )
+
+  /* 同 id 下手改 URL 深链段（hashchange → 路由参数变化）→ 通知模板滚动到新位置（初始注入走 ds-data，不在此重复） */
+  createEffect(
+    on(
+      () => [props.section, props.item] as const,
+      ([sec, item]) => {
+        if (sec || item) iframe?.contentWindow?.postMessage({ type: "ds-deep", deep: { section: sec, item } }, "*")
       },
       { defer: true },
     ),

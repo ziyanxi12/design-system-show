@@ -64,7 +64,7 @@ export default function DesignSystemPage(): JSX.Element {
   }
 
   return (
-    <Show when={!params.id} fallback={<DesignSystemDetail id={params.id!} />}>
+    <Show when={!params.id} fallback={<DesignSystemDetail id={params.id!} section={params.section} item={params.item} />}>
       <div class="flex-1 overflow-auto" style="background:#fff">
         <style>{`
           .ds-list { padding: 60px 112px 48px; }

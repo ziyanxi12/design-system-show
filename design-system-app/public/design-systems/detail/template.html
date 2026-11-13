@@ -892,12 +892,12 @@
       const entries = [];
       if (view.html && view.html.$file) {
         const u = assetUrl(realJsonBase(JSON_URL), view.html.$file);
-        if (u) entries.push({ name: p.title || "Pattern", group: null, height: null, url: u });
+        if (u) entries.push({ id: null, name: p.title || "Pattern", group: null, height: null, url: u });
       } else (view.cards || []).forEach(card => Object.values(card.states || {}).forEach(st => {
         const u = st && assetUrl(realJsonBase(JSON_URL), statePath(st, card));
         if (!u) return;
         const it = (p.items || []).find(x => x && x.id === card.id);
-        entries.push({ name: (it && it.name) || card.id || "Pattern", group: (it && it.group) || null, height: it && it.height, url: u });
+        entries.push({ id: card.id, name: (it && it.name) || card.id || "Pattern", group: (it && it.group) || null, height: it && it.height, url: u });
       }));
       return entries;
     }
@@ -990,6 +990,7 @@
           const blk = document.getElementById("cmp-" + idx);
           if (blk) {
             setNav("components", idx, null);
+            syncRoute("components", compItems[idx] && compItems[idx].id);
             scrollLock = true;
             main.scrollTo({ top: offsetIn(main, blk) - 24, behavior: "smooth" });
             clearTimeout(main._unlock);
@@ -1003,6 +1004,7 @@
           const blk = document.getElementById("patr-" + idx);
           if (blk) {
             setNav("patterns", null, idx);
+            syncRoute("patterns", patItems[idx] && patItems[idx].id);
             scrollLock = true;
             main.scrollTo({ top: offsetIn(main, blk) - 24, behavior: "smooth" });
             clearTimeout(main._unlock);
@@ -1016,9 +1018,42 @@
         if (card) {
           const grp = b.closest(".nav-grp");
           if (grp && !grp.classList.contains("open")) grp.classList.add("open");
+          syncRoute(b.dataset.sec, null);
           main.scrollTo({ top: offsetIn(main, card), behavior: "smooth" });
         }
       });
+
+      /* URL 深链上报：滚动/点导航时把当前分区/条目报给宿主壳（壳侧 replaceState 实时跟随；仅变化时上报） */
+      let lastRoute = "";
+      function syncRoute(section, item) {
+        const key = section + (item ? "/" + item : "");
+        if (key === lastRoute) return;
+        lastRoute = key;
+        if (window.parent !== window) window.parent.postMessage({ type: "ds-scroll", section: section, item: item || undefined }, "*");
+      }
+
+      /* 深链落地：滚动到分区/条目行并高亮导航（boot 注入的初始深链与 ds-deep 消息共用） */
+      function applyDeep(deep) {
+        if (!deep || !deep.section) return false;
+        let blk = document.getElementById("sec-" + deep.section);
+        if (!blk) return false;
+        let cmp = null, pat = null;
+        if (deep.item && deep.section === "components") {
+          const i = compItems.findIndex(it => it.id === deep.item);
+          if (i >= 0) { blk = document.getElementById("cmp-" + i); cmp = i; }
+        } else if (deep.item && deep.section === "patterns") {
+          const i = patItems.findIndex(en => en.id === deep.item);
+          if (i >= 0) { blk = document.getElementById("patr-" + i); pat = i; }
+        }
+        scrollLock = true;
+        main.scrollTo({ top: Math.max(0, offsetIn(main, blk) - 24) });
+        clearTimeout(main._unlock);
+        main._unlock = setTimeout(() => { scrollLock = false; }, 700);
+        setNav(deep.section, cmp, pat);
+        lastRoute = deep.section + (deep.item ? "/" + deep.item : "");   // 与来路 URL 一致，避免 spy 重复上报
+        return true;
+      }
+      APPLY_DEEP = applyDeep;
 
       function setNav(sec, cmp, pat) {
         nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null && pat == null));
@@ -1030,6 +1065,9 @@
           const h = cat.querySelector(".sub-h");
           if (h) h.classList.toggle("on", !!active);
         });
+        /* 选中项随滚动上下移动时保持在侧边栏可见（nearest：已可见时不滚动；nav 滚动不触发 main 联动） */
+        const onBtn = nav.querySelector("[data-sec].on, [data-cmp].on, [data-pat].on");
+        if (onBtn) onBtn.scrollIntoView({ block: "nearest" });
       }
 
       main.addEventListener("scroll", () => {
@@ -1056,8 +1094,11 @@
           });
         }
         setNav(curKey, cmp, pat);
+        syncRoute(curKey,
+          curKey === "components" && cmp != null ? compItems[cmp].id :
+          curKey === "patterns" && pat != null ? patItems[pat].id : null);
       });
-      if (SECTIONS.length) setNav(SECTIONS[0].key, null, null);
+      if (!applyDeep(DEEP) && SECTIONS.length) setNav(SECTIONS[0].key, null, null);
 
       /* 返回：面包屑箭头 + "设计系统"文字 */
       // 返回已由展示端外层壳的面包屑处理（navigate），模板内不再有头部/返回逻辑
@@ -1086,9 +1127,13 @@
     }
 
     var booted = false;
+    /* 深链（{section, item}）：boot 收下、buildPage 渲染完落地；APPLY_DEEP 由 buildPage 注册供 ds-deep 消息转发 */
+    let DEEP = null;
+    var APPLY_DEEP = null;
     function boot(payload) {
       if (booted) return;
       booted = true;
+      DEEP = payload.deep || null;
       try {
         loadSystem(payload.id, payload.meta).catch(showError);
       } catch (err) {
@@ -1099,6 +1144,7 @@
     if (window.parent !== window) {
       window.addEventListener("message", e => {
         if (e.data && e.data.type === "ds-data") boot(e.data.data);
+        else if (e.data && e.data.type === "ds-deep" && APPLY_DEEP) APPLY_DEEP(e.data.deep || {});
       });
       window.parent.postMessage({ type: "ds-ready" }, "*");
     } else {
