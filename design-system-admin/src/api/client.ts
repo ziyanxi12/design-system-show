@@ -8,12 +8,14 @@ import { ApiError } from './errors'
 import { expireLogout, getEncryptedUserData } from '../utils/auth'
 import type {
   AuthorEntry,
+  DesignSystemCreateResp,
   DesignSystemItem,
   DesignSystemListResp,
   DesignSystemMeta,
   OperationLog,
   OperationLogsParams,
   OperationLogsResp,
+  PartFiles,
   StatsDeptShareResp,
   StatsGranularity,
   StatsMetric,
@@ -23,7 +25,6 @@ import type {
   WhitelistAccount,
   WhitelistListResp,
 } from '../types'
-import type { ZipParseResult } from './zipTypes'
 
 const VS_TOKEN = 'octo_vs_7e91e862389139bab49247ba2550f366'
 
@@ -34,10 +35,17 @@ function statsQs(params: Record<string, string | undefined>): string {
   return usp.toString()
 }
 
-/** zip 上传上限与分片阈值（对齐 api.md 契约） */
-export const MAX_ZIP_BYTES = 200 * 1024 * 1024
-export const CHUNK_THRESHOLD_BYTES = 20 * 1024 * 1024
-export const CHUNK_SIZE_BYTES = 5 * 1024 * 1024
+/** 单部件上传上限（对齐 api.md 契约：每个部件 ≤200MB，multipart 直传不再分片） */
+export const MAX_PART_BYTES = 200 * 1024 * 1024
+
+/** 五部件名 → multipart 字段名（octo-design-parts/1 契约） */
+const PART_FIELD: Record<keyof PartFiles, string> = {
+  design_md: 'design_md_file',
+  tokens: 'tokens_file',
+  components: 'components_file',
+  patterns: 'patterns_file',
+  skill: 'skill_file',
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...(options?.headers as Record<string, string>) }
@@ -68,9 +76,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// ─────────────── zip 上传（直传 / 分片统一流程） ───────────────
-
-const fmtMB = (n: number) => `${(n / 1024 / 1024).toFixed(1)}MB`
+// ─────────────── 五部件上传（multipart 直传，逐部件独立成败） ───────────────
 
 interface UploadOptions {
   coverFile?: File | null
@@ -78,7 +84,7 @@ interface UploadOptions {
   authors?: AuthorEntry[]
 }
 
-/** 组装 meta 表单字段（create 与 complete 共用） */
+/** 组装 meta 表单字段（create 共用） */
 function appendMetaFields(fd: FormData, meta: Partial<DesignSystemMeta>, options?: UploadOptions) {
   if (meta.name !== undefined) fd.append('name', meta.name)
   if (meta.desc !== undefined) fd.append('desc', meta.desc ?? '')
@@ -89,120 +95,24 @@ function appendMetaFields(fd: FormData, meta: Partial<DesignSystemMeta>, options
   if (options?.iconFile) fd.append('icon_file', options.iconFile)
 }
 
-/** multipart 直传（≤20MB；create 走 POST，重传走 PUT /{slug}/json） */
-async function directUpload(
-  file: File,
-  meta: Partial<DesignSystemMeta>,
-  options: UploadOptions | undefined,
-  reuploadSlug: string | null,
-): Promise<DesignSystemItem> {
-  const fd = new FormData()
-  fd.append('file', file)
-  appendMetaFields(fd, meta, reuploadSlug ? undefined : options)
-  const url = reuploadSlug ? `/api/design-systems/${reuploadSlug}/json` : '/api/design-systems'
-  console.log(`[zip-upload] 直传 ${file.name}（${fmtMB(file.size)}）→ ${reuploadSlug ? '重传 ' + reuploadSlug : '新增'}`)
-  const item = await request<DesignSystemItem>(url, { method: reuploadSlug ? 'PUT' : 'POST', body: fd })
-  console.log(`[zip-upload] 直传成功 slug=${item.slug} source_slug=${item.source_slug ?? '—'}`)
-  return item
+/** 追加提供了的部件文件（全部可选；一个都没选 = 纯壳系统） */
+function appendPartFiles(fd: FormData, parts: PartFiles) {
+  for (const key of Object.keys(PART_FIELD) as (keyof PartFiles)[]) {
+    const f = parts[key]
+    if (f) fd.append(PART_FIELD[key], f)
+  }
 }
 
-/**
- * 分片上传（>20MB）：POST /uploads/init → PUT /uploads/{id}/chunks/{i}（5MB/片）
- * → POST /uploads/{id}/complete（meta 表单；slug 字段提供时为重传模式）。
- * 每片打印进度日志；失败打印错误并中止。
- */
-async function chunkedUpload(
-  file: File,
-  meta: Partial<DesignSystemMeta>,
-  options: UploadOptions | undefined,
-  reuploadSlug: string | null,
-): Promise<DesignSystemItem> {
-  const t0 = performance.now()
-  console.log(`[zip-upload] 文件 ${fmtMB(file.size)} 超过 20MB，启用分片上传（每片 5MB）`)
-  const init = await request<{ upload_id: string; chunk_size: number; chunk_count: number }>(
-    '/api/design-systems/uploads/init',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: file.name, size: file.size }),
-    },
-  )
-  console.log(`[zip-upload] 会话已创建 upload_id=${init.upload_id}，共 ${init.chunk_count} 片`)
-
-  let uploadedBytes = 0
-  for (let index = 0; index < init.chunk_count; index++) {
-    const start = index * init.chunk_size
-    const blob = file.slice(start, Math.min(start + init.chunk_size, file.size))
-    const res = await fetch(
-      `${API_BASE}/api/design-systems/uploads/${init.upload_id}/chunks/${index}`,
-      {
-        method: 'PUT',
-        headers: {
-          'octo-vs-token': VS_TOKEN,
-          'Content-Type': 'application/octet-stream',
-          ...(await authHeaders()),
-        },
-        body: blob,
-        credentials: 'include',
-      },
-    )
-    if (!res.ok) {
-      let detail = `HTTP ${res.status}`
-      try {
-        const body = await res.json()
-        if (body && typeof body.detail === 'string') detail = body.detail
-      } catch {
-        /* ignore */
-      }
-      console.error(`[zip-upload] 第 ${index + 1}/${init.chunk_count} 片上传失败：${detail}`)
-      throw new ApiError(res.status, `分片上传失败（第 ${index + 1} 片）：${detail}`)
+/** 逐部件成败 console 日志（失败部件由界面另行红字汇总） */
+function logIngest(ingest: DesignSystemCreateResp['ingest'] | undefined) {
+  if (!ingest) return
+  for (const [part, info] of Object.entries(ingest)) {
+    if (!info?.provided) continue
+    if (info.ok) {
+      console.log(`[parts-upload] 部件 ${part} 导入成功`, info.count != null ? `（${info.count} 个）` : '', info.nested ? '（同名嵌套已剥离）' : '')
+    } else {
+      console.warn(`[parts-upload] 部件 ${part} 导入失败（已忽略）：${info.error ?? '未知错误'}`)
     }
-    uploadedBytes += blob.size
-    console.log(
-      `[zip-upload] chunk ${index + 1}/${init.chunk_count} ok（${fmtMB(blob.size)}，总进度 ${Math.round((uploadedBytes / file.size) * 100)}%）`,
-    )
-  }
-
-  const fd = new FormData()
-  appendMetaFields(fd, meta, reuploadSlug ? undefined : options)
-  if (reuploadSlug) fd.append('slug', reuploadSlug)
-  const item = await request<DesignSystemItem>(`/api/design-systems/uploads/${init.upload_id}/complete`, {
-    method: 'POST',
-    body: fd,
-  })
-  const secs = ((performance.now() - t0) / 1000).toFixed(1)
-  console.log(`[zip-upload] 分片上传成功（${secs}s）slug=${item.slug} source_slug=${item.source_slug ?? '—'}`)
-  return item
-}
-
-/** 分片请求的鉴权头（octo-vs-token + X-User-Data；直传由 request() 统一处理） */
-async function authHeaders(): Promise<Record<string, string>> {
-  const headers: Record<string, string> = {}
-  try {
-    const encrypted = await getEncryptedUserData()
-    if (encrypted) headers['X-User-Data'] = encrypted
-  } catch {
-    /* ignore */
-  }
-  return headers
-}
-
-/** zip 上传统一入口：>20MB 自动分片；重传（reuploadSlug）时管理字段由后端保留 */
-async function uploadZipFlow(
-  file: File,
-  meta: Partial<DesignSystemMeta>,
-  options: UploadOptions | undefined,
-  reuploadSlug: string | null,
-): Promise<DesignSystemItem> {
-  try {
-    const result =
-      file.size > CHUNK_THRESHOLD_BYTES
-        ? await chunkedUpload(file, meta, options, reuploadSlug)
-        : await directUpload(file, meta, options, reuploadSlug)
-    return result
-  } catch (e) {
-    console.error('[zip-upload] 上传失败：', e instanceof Error ? e.message : e)
-    throw e
   }
 }
 
@@ -214,26 +124,43 @@ export const api = {
   },
 
   /**
-   * 上传设计系统 zip 包（服务端解压解析为 design-system.json）；
-   * meta 为卡片字段覆盖（name/desc/default），authors 为作者数组（users 表自动补全昵称/部门），
-   * coverFile / iconFile 可选自定义封面 / 图标（≤2MB）。
-   *
-   * 日志：每个阶段 console.log / console.error（需求要求：前端打印上传日志）。
-   * >20MB 自动走分片上传（init → chunks → complete），≤20MB multipart 直传。
+   * 五部件上传新增（octo-design-parts/1）：五个部件全部可选、逐部件独立成败——
+   * 失败部件由服务端忽略并在响应 ingest 里回报（界面红字汇总提示），其余部件正常入库；
+   * 一个部件都不选 = 纯壳系统（仅名称）。
+   * meta 为卡片字段覆盖（name 必填/desc/default），authors 为作者数组（users 表自动补全昵称/部门），
+   * coverFile / iconFile 可选自定义封面 / 图标（≤2MB）。单部件 ≤200MB，multipart 直传不再分片。
    */
   create: async function (
-    file: File,
+    parts: PartFiles,
     meta: Partial<DesignSystemMeta>,
     options?: { coverFile?: File | null; iconFile?: File | null; authors?: AuthorEntry[] },
-  ): Promise<DesignSystemItem> {
-    return uploadZipFlow(file, meta, options, null)
+  ): Promise<DesignSystemCreateResp> {
+    const fd = new FormData()
+    appendPartFiles(fd, parts)
+    appendMetaFields(fd, meta, options)
+    const chosen = (Object.keys(PART_FIELD) as (keyof PartFiles)[]).filter((k) => parts[k])
+    console.log(`[parts-upload] 新增设计系统：部件 ${chosen.length ? chosen.join(' + ') : '（纯壳，仅名称）'}`)
+    const item = await request<DesignSystemCreateResp>('/api/design-systems', { method: 'POST', body: fd })
+    console.log(`[parts-upload] 新增成功 slug=${item.slug}（部件成败见逐条日志）`)
+    logIngest(item.ingest)
+    return item
   },
 
-  /** zip 解析预览：md 转 json + assets 树扫描结果（不落库），ZipParsePage 数据源 */
-  parseZip(file: File, signal?: AbortSignal): Promise<ZipParseResult> {
+  /**
+   * 部件替换（PUT /{slug}/parts）：仅替换提供部件的内容（逐部件独立成败，报告同 create）；
+   * 未提供部件取存量（老系统 token 区块原样保留）；meta 不受影响，走 patchMeta。
+   */
+  putParts: async function (slug: string, parts: PartFiles): Promise<DesignSystemCreateResp> {
     const fd = new FormData()
-    fd.append('file', file)
-    return request<ZipParseResult>('/api/design-systems/parse', { method: 'POST', body: fd, signal })
+    appendPartFiles(fd, parts)
+    const chosen = (Object.keys(PART_FIELD) as (keyof PartFiles)[]).filter((k) => parts[k])
+    console.log(`[parts-upload] 部件替换 slug=${slug}：${chosen.join(' + ')}`)
+    const item = await request<DesignSystemCreateResp>(`/api/design-systems/${slug}/parts`, {
+      method: 'PUT',
+      body: fd,
+    })
+    logIngest(item.ingest)
+    return item
   },
 
   getJson(slug: string): Promise<unknown> {
@@ -261,11 +188,6 @@ export const api = {
     if (options?.coverFile) fd.append('cover_file', options.coverFile)
     if (options?.iconFile) fd.append('icon_file', options.iconFile)
     return request<DesignSystemItem>(`/api/design-systems/${slug}`, { method: 'PATCH', body: fd })
-  },
-
-  /** zip 重传覆盖（≤20MB 直传 PUT，>20MB 自动分片 complete 的 slug 重传模式；语义一致） */
-  putJson(slug: string, file: File): Promise<DesignSystemItem> {
-    return uploadZipFlow(file, {}, undefined, slug)
   },
 
   async remove(slug: string): Promise<void> {

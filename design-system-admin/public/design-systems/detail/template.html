@@ -65,7 +65,7 @@
     .nav-grp > button .chev { margin-left: auto; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--text-3); transition: transform .15s; }
     .nav-grp > button .chev svg { width: 14px; height: 14px; }
     .nav-grp:not(.open) > button .chev { transform: rotate(-90deg); }
-    .nav-sub { display: none; flex-direction: column; gap: 2px; margin-top: 4px; max-height: 320px; overflow: auto; }
+    .nav-sub { display: none; flex-direction: column; gap: 2px; margin-top: 4px; }
     .nav-grp.open .nav-sub { display: flex; }
     .nav-sub button { height: 32px; flex-shrink: 0; padding: 0 12px 0 40px; font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 32px; }
     .nav-sub button.on { background: none; color: var(--brand); font-weight: 500; }
@@ -83,7 +83,7 @@
     }
     .nav-sub .nav-category .sub-h .cat-chev svg { width: 12px; height: 12px; }
     .nav-sub .nav-category:not(.open) .sub-h .cat-chev { transform: rotate(-90deg); }
-    .nav-sub .nav-cat-items { display: none; flex-direction: column; gap: 2px; margin: 2px 0 6px; max-height: 300px; overflow: auto; }
+    .nav-sub .nav-cat-items { display: none; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
     .nav-sub .nav-category.open .nav-cat-items { display: flex; }
     .nav-sub .nav-cat-items .sub-l2 { height: 32px; flex-shrink: 0; padding: 0 12px 0 44px; font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; }
 
@@ -99,11 +99,6 @@
     .sec-desc { margin-top: 12px; color: var(--text-primary); }
     .sec-divider { height: 1px; background: var(--border-1); margin: 24px 0; }
     .sec-tools { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-    .overview-text { margin-top: 12px; font-size: 15px; line-height: 28px; color: var(--text-primary); max-width: 960px; white-space: pre-wrap; }
-    /* 设计原则（principles 列表的语义渲染：h3 粗体标题 + ol 序号列表） */
-    .ov-sec { margin-top: 32px; }
-    .ov-sec h3 { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: var(--text-primary); }
-    .ov-items { margin: 0; padding-left: 20px; font-size: 14px; line-height: 28px; color: var(--text-primary); max-width: 960px; }
 
     .sub-title { font-size: 14px; line-height: 22px; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
     .sub-title small { color: var(--text-3); font-size: 12px; }
@@ -235,10 +230,8 @@
     .ct-name .src-badge { margin-top: 10px; }
     .ct-name { display: flex; flex-direction: column; justify-content: center; }
     .ct-preview { padding: 0 !important; height: 160px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .ct-preview .cp-frame { width: 100%; height: 160px; border: 0; display: block; }
+    .ct-preview .cp-frame { width: 100%; height: 100%; border: 0; display: block; }
     .ct-preview > .pv, .ct-preview > .ct-shots, .ct-preview > .ct-empty { margin: 0 20px; }
-    /* Pattern 整帧预览（参照 demo pt-view）：宽度撑满、白底描边圆角，父页按宽屏排版量高 */
-    .pt-view { display: block; width: 100%; height: 600px; border: 0; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06); margin-top: 20px; }
     .ct-shots { display: flex; flex-wrap: wrap; gap: 8px; }
     .ct-shots img { height: 56px; border-radius: 8px; background: #F2F3F5; transition: transform .15s; }
     .ct-shots img:hover { transform: scale(1.6); position: relative; z-index: 2; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
@@ -516,7 +509,9 @@
     function renderCard(ds, key, mapping) {
       const box = document.getElementById("sec-" + key);
       if (!box) return;
-      if (!ds[key]) { box.innerHTML = emptyState(ds, key); return; }
+      /* 概览例外：数据源是 source.md 文件（与 json 的 overview 键无关），始终走 rOverview
+         ——读到展示，读不到由渲染器走统一空态 */
+      if (!ds[key] && key !== "overview") { box.innerHTML = emptyState(ds, key); return; }
       const R = { overview: rOverview, color: rColor, typography: rType, spacing: rSpacing, radius: rRadius, shadow: rShadow, components: rComponents, assets: rAssets, patterns: rPatterns }[key];
       if (!R) { box.innerHTML = emptyState(ds, key); return; }   // 无渲染器的区块（如 layout）一律空态
       R(box, ds, mapping);
@@ -560,20 +555,20 @@
       return out.join("\n");
     };
 
-    /* ---------- 概览 ---------- */
+    /* ---------- 概览（DESIGN.md 全文：fetch source.md，读到展示，读不到走统一空态） ---------- */
     function rOverview(box, ds) {
-      const ov = ds.overview || {};
-      // octo-design-zip/2：overview.markdown = DESIGN.md 全文原文 → markdown 渲染（存量无此字段走老路径）
-      if (ov.markdown) {
-        box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
-          '<div class="md-body">' + mdRender(ov.markdown) + '</div>';
-        return;
-      }
-      // principles 语义上是一个列表：用 <ol><li> 渲染（浏览器默认粗体标题 + 序号列表），忠实还原数据结构
-      box.innerHTML = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>' +
-        '<div class="overview-text">' + esc(ov.text || "") + '</div>' +
-        (ov.principles && ov.principles.length ? '<div class="ov-sec"><h3>设计原则</h3>' +
-          '<ol class="ov-items">' + ov.principles.map(p => '<li>' + esc(p) + '</li>').join("") + '</ol></div>' : "");
+      const head = '<div class="sec-label">概览</div><div class="sec-title">' + esc(ds.name) + '</div>';
+      box.innerHTML = head + '<div class="md-body">加载中…</div>';
+      const empty = () => { box.innerHTML = emptyState(ds, "overview"); };
+      const base = realJsonBase(JSON_URL);
+      if (!base) { empty(); return; }
+      fetch(base + "/source.md")
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+        .then(md => {
+          box.innerHTML = head + '<div class="md-body">' + mdRender(md) + '</div>';
+          if (!md.trim()) empty();
+        })
+        .catch(empty);
     }
 
     /* ---------- 颜色 ---------- */
@@ -670,32 +665,8 @@
       bindCopy(box);
     }
 
-    /* ---------- 组件（三列表格 + 沙箱预览，demo ds.js 移植） ---------- */
-    const PROP_CN = { types: "变体", type: "变体", variant: "变体", state: "状态", status: "状态", size: "尺寸", color: "颜色", selected: "选中", checked: "选中", disabled: "禁用", loading: "加载", indeterminate: "半选", closable: "可关闭", dot: "圆点", count: "数量", showTotal: "显示总数", material: "材质" };
-    const LIVE = "__live";
-    const STATES = [[LIVE, "交互"], ["hover", "悬停"], ["pressed", "按下"], ["disabled", "禁用"]];
-    const FORCE = { enabled: "rest", normal: "rest", default: "rest", hover: "hover", pressed: "pressed", active: "pressed", focus: "focus", focused: "focus", disabled: "disabled", loading: "loading" };
+    /* ---------- 组件（两列表格：名称 | 预览，iframe src 直连 /static 资产） ---------- */
     const TOKEN_PREVIEW = ["button", "input", "search", "numeric", "form", "switch", "checkbox", "radio", "tabs", "tag", "alert", "badge", "pagination", "card", "dialog", "drawer", "breadcrumb", "link"];
-
-    function variantAxes(it) {
-      if (it.variants) {
-        const im = it.interaction || {};
-        const base = (it.variants.find(v => /Enabled/.test(JSON.stringify(v.props))) || it.variants[0]).props;
-        const axes = it.props.filter(k => k !== "scenario" && k !== im.stateAxis && new Set(it.variants.map(v => v.props[k])).size > 1)
-          .map(k => ({ k: k, label: PROP_CN[k] || k, values: [...new Set(it.variants.map(v => v.props[k]))] }));
-        const ORDER = ["rest", "hover", "pressed", "focus", "disabled", "loading"];
-        const states = im.stateAxis ? [...new Set(it.variants.map(v => v.props[im.stateAxis]))].map(v => ({ label: v, force: FORCE[String(v).toLowerCase()] || String(v).toLowerCase() }))
-          .sort((a, b) => (ORDER.indexOf(a.force) + 1 || 99) - (ORDER.indexOf(b.force) + 1 || 99)) : [];
-        return { base: base, axes: axes, states: states, stateLabel: PROP_CN[im.stateAxis] || "状态" };
-      }
-      const base = defaultsFor(it);
-      const props = (it.props || []).filter(p => typeof p === "object" && /\|/.test(p.values));
-      const axes = props.map(p => ({ k: p.name, label: PROP_CN[p.name] || p.name, values: p.values.split("|").map(x => x.trim()) }));
-      const bools = (it.props || []).filter(p => typeof p === "object" && p.values === "boolean").map(p => p.name);
-      const states = [["rest", "默认"], ["hover", "悬停"], ["pressed", "按下"], ["focus", "聚焦"], ["disabled", "禁用"]].map(([f, l]) => ({ label: l, force: f }));
-      if (bools.includes("loading")) states.push({ label: "加载", force: "loading", attr: "loading" });
-      return { base: base, axes: axes, states: states, stateLabel: "状态" };
-    }
 
     function defaultsFor(it) {
       const out = {};
@@ -705,11 +676,10 @@
       return out;
     }
 
-    const canRender = src => src.files.some(f => /^(html|tsx|jsx)$/.test(f.lang) && typeof f.code === "string");
     const htmlFile = src => (src.files || []).find(f => f.lang === "html");
-    /* 资产直连 URL：jsonUrl 为真实地址（非 blob:/data:——管理台解析页注入的是 blob）时，
-       files[].path（zip 相对路径，含 assets/ 前缀）→ {jsonUrl 目录}/assets/**（后端 /static 直可访问）；
-       推导不出返回 null，调用方回落沙箱 Blob 文档 */
+    /* 资产直连 URL：files[].path（zip 相对路径，含 assets/ 前缀）→ {jsonUrl 目录}/assets/**
+       （后端上传 zip 时已解压落盘、经 /static 直可访问）；推导不出返回 null，按无预览处理
+       —— 展示端 src 只访问真实 html 页面，不再生成文档 / Blob */
     const realJsonBase = url => !url || /^(blob:|data:)/i.test(url) ? null : url.slice(0, url.lastIndexOf("/"));
     function assetUrl(base, path) {
       if (!base || !path) return null;
@@ -720,123 +690,14 @@
     }
     function previewMode(it) {
       const src = it.source || { status: "missing" };
-      if (src.status === "found") {
-        if (assetUrl(realJsonBase(JSON_URL), (htmlFile(src) || {}).path)) return "url";
-        if (canRender(src)) return "source";
-      }
-      if (src.status === "generated") return "ai";
+      if (src.status === "found" && assetUrl(realJsonBase(JSON_URL), (htmlFile(src) || {}).path)) return "url";
       if (it.variants) return "shot";
       if (TOKEN_PREVIEW.includes(it.id)) return "token";
       return "none";
     }
 
-    function mobileScale(ds) {
-      const body = ((ds.typography || {}).scale || []).filter(x => /body/i.test(x.name)).map(x => x.size);
-      return body.length && Math.max(...body) >= 16 ? 0.75 : 1;
-    }
-
-    const CDN = {
-      react: "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
-      dom: "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js",
-      babel: "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"
-    };
-
-    function sandboxDoc(it, props, ds) {
-      const files = it.source.files;
-      const css = files.filter(f => /^(css|scss)$/.test(f.lang)).map(f => typeof f.code === "string" ? f.code : "").join("\n");
-      const vars = themeVars(deriveTheme(ds));
-      const head = '<meta charset="utf-8"><style>:root{' + vars + '}html,body{margin:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:24px;box-sizing:border-box;font-family:"HarmonyOS Sans SC","PingFang SC",sans-serif}.cp-err{color:#E84026;font:12px/18px monospace;white-space:pre-wrap}' + css + '</style>';
-      const html = files.find(f => f.lang === "html");
-      if (html && it.source.status === "generated") {
-        const kit = '<style>body{display:block;min-height:0;padding:24px 28px}.g{display:flex;flex-direction:column;gap:20px}.g-sec{display:flex;flex-direction:column;gap:10px}.g-label{font-size:12px;color:#8a8a8a}.g-row{display:flex;flex-wrap:wrap;gap:16px 20px;align-items:flex-end}.g-it{display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:6px}.g-cap{font-size:11px;color:#9a9a9a;line-height:14px;white-space:nowrap}.g-label i{font-style:normal;color:#b5b5b5;margin-left:4px}.g-sec{max-width:100%}.g-sec .g-mx+.g-mx{margin-top:10px}.g-mx{display:grid;gap:14px 16px;align-items:center;justify-items:center;width:max-content}.g-mh{font-size:12px;color:#8a8a8a;white-space:nowrap}.g-rh{font-size:12px;color:#8a8a8a;justify-self:start;white-space:nowrap;padding-right:8px}.g-cell{display:flex;align-items:center;justify-content:center;min-height:44px;padding:4px}button{font-family:inherit}.g.own{min-height:200px;align-items:center;justify-content:center}body[data-force] .g{pointer-events:none}body[data-force=hover] .g :is(button,input,select,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.94)}body[data-force=pressed] .g :is(button,label,a,[data-toggle],[data-item],.cd,.tg){filter:brightness(.86)}body[data-force=disabled] .g{opacity:.4}body[data-force=focus] .g :is(button,input){box-shadow:0 0 0 2px #fff,0 0 0 4px var(--p)}</style>';
-        const js = '<scr' + 'ipt>document.addEventListener("click",function(e){var t=e.target.closest("[data-toggle]");if(t&&!t.disabled){t.classList.toggle("on");return}var it=e.target.closest("[data-item]");if(it&&!it.disabled){var g=it.closest("[data-group]");g&&g.querySelectorAll("[data-item]").forEach(function(x){x.classList.toggle("on",x===it)})}});</scr' + 'ipt>';
-        return '<!doctype html><html><head>' + head + kit + '</head><body>' + html.code + js + '</body></html>';
-      }
-      if (html) return '<!doctype html><html><head>' + head + '</head><body>' + html.code + '</body></html>';
-
-      const jsx = files.filter(f => /^(tsx|jsx)$/.test(f.lang));
-      const norm = it.id.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const main = jsx.find(f => f.path.toLowerCase().replace(/[^a-z0-9/]/g, "").split("/").pop().startsWith(norm)) || jsx[0];
-      let mainName = null;
-      const code = jsx.map(f => {
-        let c = f.code.replace(/^\s*import[^;]*?from\s*['"][^'"]+['"];?\s*$/gm, "").replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, "");
-        const m = c.match(/export\s+default\s+(?:function|class)\s+(\w+)/) || c.match(/export\s+default\s+(\w+)\s*;?/);
-        if (f === main && m) mainName = m[1];
-        return c.replace(/export\s+default\s+(function|class)\s+/g, "$1 ").replace(/export\s+default\s+\w+\s*;?/g, "")
-          .replace(/export\s+(const|let|function|class|interface|type|enum)\s/g, "$1 ").replace(/export\s*\{[^}]*\}\s*;?/g, "");
-      }).join("\n");
-      const p = {};
-      Object.entries(props || {}).forEach(([k, v]) => { if (!k.startsWith("__") && k !== "scenario") p[k] = v === "true" ? true : v === "false" ? false : v; });
-      return `<!doctype html><html><head>${head}
-        <script src="${CDN.react}"><\/script><script src="${CDN.dom}"><\/script><script src="${CDN.babel}"><\/script></head>
-        <body><div id="root"></div>
-        <script>
-          try {
-            const { useState, useEffect, useRef, useMemo, useCallback, forwardRef, Fragment } = React;
-            const src = ${JSON.stringify(code)} + "\\n;window.__C = typeof ${mainName || "undefined"} !== 'undefined' ? ${mainName || "undefined"} : null;";
-            const out = Babel.transform(src, { filename: "c.tsx", presets: [["typescript", { isTSX: true, allExtensions: true }], "react"] }).code;
-            new Function("React", "useState", "useEffect", "useRef", "useMemo", "useCallback", "forwardRef", "Fragment", out)(React, useState, useEffect, useRef, useMemo, useCallback, forwardRef, Fragment);
-            if (!window.__C) throw new Error("未找到默认导出的组件");
-            ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(window.__C, Object.assign({ children: ${JSON.stringify(it.name.split(" ")[1] || it.name)} }, ${JSON.stringify(p)})));
-          } catch (e) { document.body.innerHTML = '<div class="cp-err">组件源码渲染失败：' + e.message + '</div>'; }
-        <\/script></body></html>`;
-    }
-
-    /* 把属性驱动的单个实例按「每个属性一行」复制成全部变体（ai 模式） */
-    function expandVariants(doc, it, ax, scale) {
-      scale = scale || 1;
-      const wrap = doc.querySelector(".g.own"), tpl = wrap && wrap.querySelector("[data-c]");
-      if (!tpl) return;
-      const sk = (it.interaction || {}).stateAxis;
-      const set = (el, props) => Object.entries(props).forEach(([k, v]) => {
-        if (k.startsWith("__") || k === "scenario" || k === sk) return;
-        el.setAttribute("data-" + k.toLowerCase(), String(v).toLowerCase());
-      });
-      const item = (props, cap, force, attr) => {
-        const el = tpl.cloneNode(true); set(el, props);
-        if (scale !== 1) el.style.zoom = scale;
-        if (force && force !== "rest") el.setAttribute("data-force", force);
-        if (attr) el.setAttribute("data-" + attr, "true");
-        const f = doc.createElement("div"); f.className = "g-it";
-        f.appendChild(el);
-        const c = doc.createElement("span"); c.className = "g-cap"; c.textContent = cap; f.appendChild(c);
-        return f;
-      };
-      const sec = (label, els) => { const s = doc.createElement("div"); s.className = "g-sec"; s.innerHTML = '<div class="g-label">' + label + '</div><div class="g-row"></div>'; els.forEach(e => s.lastChild.appendChild(e)); return s; };
-      wrap.innerHTML = "";
-      wrap.classList.remove("own");
-      const tg = (it.interaction || {}).toggleAxis, tAxis = tg && ax.axes.find(x => x.k === tg);
-      ax.axes.filter(a => !(ax.states.length && a === tAxis)).forEach(a => wrap.appendChild(sec(esc(a.label) + " <i>" + esc(a.k) + "</i>", a.values.map(v => item(Object.assign({}, ax.base, { [a.k]: v }), v)))));
-      if (ax.states.length) {
-        const rows = tAxis ? tAxis.values.map(v => ({ label: esc(tAxis.label) + " " + esc(v), p: Object.assign({}, ax.base, { [tg]: v }) })) : [{ label: "", p: ax.base }];
-        const cell = (p, x) => {
-          const c = doc.createElement("div"); c.className = "g-cell";
-          const el = tpl.cloneNode(true); set(el, p);
-          if (scale !== 1) el.style.zoom = scale;
-          if (x.force && x.force !== "rest") el.setAttribute("data-force", x.force);
-          if (x.attr) el.setAttribute("data-" + x.attr, "true");
-          c.appendChild(el); return c;
-        };
-        const head = (cls, html) => { const h = doc.createElement("span"); h.className = cls; h.innerHTML = html; return h; };
-        const matrix = states => {
-          const mx = doc.createElement("div"); mx.className = "g-mx";
-          mx.style.gridTemplateColumns = (tAxis ? "auto " : "") + "repeat(" + states.length + ", max-content)";
-          if (tAxis) mx.appendChild(head("", ""));
-          states.forEach(x => mx.appendChild(head("g-mh", esc(x.label))));
-          rows.forEach(r => { if (tAxis) mx.appendChild(head("g-rh", r.label)); states.forEach(x => mx.appendChild(cell(r.p, x))); });
-          return mx;
-        };
-        const s2 = doc.createElement("div"); s2.className = "g-sec";
-        s2.innerHTML = '<div class="g-label">' + esc(ax.stateLabel) + " <i>" + esc(sk || "state") + "</i>" + '</div>';
-        wrap.appendChild(s2);
-        const fits = () => [...s2.querySelectorAll(".g-mx")].every(m => m.scrollWidth <= wrap.clientWidth + 2);
-        for (let per = ax.states.length; per >= 1; per--) {
-          s2.querySelectorAll(".g-mx").forEach(m => m.remove());
-          for (let k = 0; k < ax.states.length; k += per) s2.appendChild(matrix(ax.states.slice(k, k + per)));
-          if (fits()) break;
-        }
-      }
-    }
+    /* 行高：json 里是什么就多高（items[].height 原值直用，不夹取），仅缺省/非法值回落 160 */
+    const rowHeight = it => Number(it && it.height) || 160;
 
     /* token 推导预览：点击可交互 */
     function previewClick(t) {
@@ -882,9 +743,8 @@
       const it = ds.components.items[i], row = document.getElementById("cmp-" + i);
       if (!row) return;
       const mode = previewMode(it);
-      const ax = variantAxes(it);
       let previewHtml;
-      if (mode === "url" || mode === "ai" || mode === "source") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
+      if (mode === "url") previewHtml = '<iframe class="cp-frame" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(it.name) + '"></iframe>';
       else if (mode === "shot") previewHtml = '<div class="ct-shots">' + it.variants.slice(0, 8).map(v => '<img src="' + dsDataDir(ds) + "/" + v.image + '" alt="" title="' + esc(Object.values(v.props).join(" · ")) + '">').join("") + '</div>';
       else if (mode === "token") previewHtml = '<div class="pv live">' + pvPreview(it.id, defaultsFor(it)) + '</div>';
       else {
@@ -896,28 +756,12 @@
         '<div class="ct-name">' +
         '<div class="nm">' + esc(compRowName(it)) + '</div>' +
         '</div>' +
-        '<div class="ct-preview">' + previewHtml + '</div>';
+        '<div class="ct-preview" style="height:' + rowHeight(it) + 'px">' + previewHtml + '</div>';
 
       if (mode === "url") {
-        /* 组件 html 直连后端 /static 资产（iframe src=URL，整段源码不再写进 srcdoc）；
+        /* 组件 html 直连后端 /static 资产（iframe src=URL，源码不写进 iframe）；
            大 html（code 未内嵌为 $file 引用）同样可直连渲染 */
         $(".cp-frame", row).src = assetUrl(realJsonBase(JSON_URL), htmlFile(it.source).path);
-      } else if (mode === "ai" || mode === "source") {
-        /* 无直连 URL（管理台 blob jsonUrl / tsx 源码 / AI 生成）→ 沙箱文档转 Blob URL 走 src；
-           行高固定 160px（iframe 内部滚动），不再自适应 */
-        const f = $(".cp-frame", row);
-        f.onload = () => {
-          try {
-            const doc = f.contentDocument;
-            if (mode === "ai") expandVariants(doc, it, ax, mobileScale(ds));
-            if ((it.interaction || {}).toggleAxis) doc.addEventListener("click", e => {
-              const el = e.target.closest("[data-c]"); if (!el || el.hasAttribute("data-force")) return;
-              const a = it.interaction.toggleAxis.toLowerCase(), vals = [...new Set(it.variants.map(v => String(v.props[it.interaction.toggleAxis]).toLowerCase()))];
-              el.setAttribute("data-" + a, vals[(vals.indexOf(el.getAttribute("data-" + a)) + 1) % vals.length]);
-            });
-          } catch (e) { /* 同源访问异常时忽略 */ }
-        };
-        f.src = URL.createObjectURL(new Blob([sandboxDoc(it, Object.assign({}, ax.base), ds)], { type: "text/html" }));
       } else if (mode === "token") {
         row.querySelector(".pv").addEventListener("click", e => { const t = e.target.closest("[data-tg]"); if (t) previewClick(t); });
       }
@@ -945,8 +789,8 @@
     function rComponents(box, ds, mapping) {
       const c = ds.components;
       const items = c.items || [];
-      /* 头部固定格式：组件 / 组件 / N 个 HTML 组件契约，M 个按规范自带的组件预览页渲染（数据里的 title/desc 不展示） */
-      const rendered = items.filter(it => ["url", "source", "ai"].includes(previewMode(it))).length;
+      /* 头部固定格式：组件 / 组件 / N 个 HTML 组件契约，M 个按规范自带的组件预览页渲染（URL 直连数） */
+      const rendered = items.filter(it => previewMode(it) === "url").length;
       box.innerHTML = sectionShell("components", "组件", items.length + " 个 HTML 组件契约，" + rendered + " 个按规范自带的组件预览页渲染。") +
         '<div class="ct-table">' +
         '<div class="ct-row ct-th"><div>名称</div><div>预览</div></div>' +
@@ -1030,18 +874,14 @@
       };
     }
 
-    /* ---------- Pattern（布局组合页整帧预览，参照 demo rPatternView：标题/说明 + 大预览帧） ---------- */
-    function patternDoc(ds, st, bg, css) {
-      const vars = themeVars(deriveTheme(ds));
-      return '<!doctype html><html style="background:' + bg + '"><head><meta charset="utf-8"><style>:root{' + vars + '}</style>' + (css ? '<style>' + css + '</style>' : '') + '</head><body style="margin:0;padding:24px;background:' + bg + '">' + st.html + '</body></html>';
-    }
-
-    function rPatterns(box, ds) {
+    /* ---------- Pattern（title/desc + 表格展示 items；iframe src 只直连 /static 真实页面） ---------- */
+    /* pattern 条目（导航与表格共用同一份，保证索引一致）：items[].id ↔ cards[].id 匹配，
+       路径来源 $file / state.meta / item.label（均为 zip 内路径 assets/patterns/**.html）；
+       v3：assets/patterns 每个 html 文件一个 card state，后端已解压落盘可 /static 直连 */
+    function patternEntries(ds) {
       const p = ds.patterns;
-      const view = p.view || {}, bg = view.bg || "#f5f5f5";
-      const css = typeof view.css === "string" ? view.css : "";
-      /* v3：$file / state.meta / 同 id item.label 都可能携带 zip 内路径（assets/patterns/**.html）
-         —— 能推 URL 一律 src 直连，推不出（管理台 blob jsonUrl / 老数据纯内嵌）才回落 Blob */
+      if (!p) return [];
+      const view = p.view || {};
       const isPath = s => typeof s === "string" && /\.html?$/i.test(s.trim()) && !/[<>:"|]/.test(s);
       const statePath = (st, card) => {
         if (st.html && st.html.$file) return st.html.$file;
@@ -1049,38 +889,34 @@
         const it = (p.items || []).find(x => x && x.id === card.id && isPath(x.label));
         return it ? it.label.trim() : null;
       };
-      const frames = [];
-      const pushFrame = (html, path) => {
-        const url = path ? assetUrl(realJsonBase(JSON_URL), path) : null;
-        if (url || typeof html === "string") frames.push({ html: html, url: url });
-      };
-      /* view.html 整页优先（老结构）；否则逐 card.state（v3：assets/patterns 每个 html 文件一个 state） */
-      if (view.html) pushFrame(view.html, view.html && view.html.$file);
-      else (view.cards || []).forEach(card => Object.values(card.states || {}).forEach(st => {
-        if (st) pushFrame(st.html, statePath(st, card));
+      const entries = [];
+      if (view.html && view.html.$file) {
+        const u = assetUrl(realJsonBase(JSON_URL), view.html.$file);
+        if (u) entries.push({ id: null, name: p.title || "Pattern", group: null, height: null, url: u });
+      } else (view.cards || []).forEach(card => Object.values(card.states || {}).forEach(st => {
+        const u = st && assetUrl(realJsonBase(JSON_URL), statePath(st, card));
+        if (!u) return;
+        const it = (p.items || []).find(x => x && x.id === card.id);
+        entries.push({ id: card.id, name: (it && it.name) || card.id || "Pattern", group: (it && it.group) || null, height: it && it.height, url: u });
       }));
-      if (!frames.length) { box.innerHTML = emptyState(ds, "patterns"); return; }
+      return entries;
+    }
+
+    function rPatterns(box, ds) {
+      const p = ds.patterns;
+      const entries = patternEntries(ds);
+      if (!entries.length) { box.innerHTML = emptyState(ds, "patterns"); return; }
+      /* 与组件区同款：title/desc + 表格展示 items（名称 | html 预览） */
       box.innerHTML = sectionShell("patterns", p.title || "布局 Pattern", esc(p.desc)) +
-        frames.map((fr, i) => '<iframe class="pt-view" data-frame="' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(p.title || "Pattern") + '"></iframe>').join("");
-      frames.forEach((fr, i) => {
-        const f = $('.pt-view[data-frame="' + i + '"]', box);
-        if (fr.url) f.src = fr.url;
-        else if (typeof fr.html === "string") {
-          /* 完整文档原样直出（v3 pattern 文件即整页）；文档片段用 patternDoc 包装（bg + 主题变量） */
-          f.src = URL.createObjectURL(new Blob([/^\s*(<!doctype|<html)/i.test(fr.html) ? fr.html : patternDoc(ds, fr, bg, css)], { type: "text/html" }));
-        }
-        /* 同源帧按宽屏（≥960px）排版，卡片较窄时整体等比缩小，父页量高（demo rPatternView 同款） */
-        f.onload = () => {
-          try {
-            const doc = f.contentDocument, htmlEl = doc.documentElement;
-            const w = Math.max(960, f.clientWidth), scale = Math.min(1, f.clientWidth / w);
-            htmlEl.style.width = w + "px";
-            if (scale < 1) htmlEl.style.zoom = scale;
-            const fit = () => { f.style.height = Math.ceil(Math.max(doc.body.scrollHeight, 200) * (scale < 1 ? scale : 1)) + "px"; };
-            fit(); new ResizeObserver(fit).observe(doc.body);
-          } catch (e) { /* 同源访问异常时保持默认高度 */ }
-        };
-      });
+        '<div class="ct-table">' +
+          '<div class="ct-row ct-th"><div>名称</div><div>预览</div></div>' +
+          entries.map((e, i) =>
+            '<div class="ct-row" id="patr-' + i + '" data-patr-block="' + i + '">' +
+              '<div class="ct-name"><div class="nm" title="' + esc(e.name) + '">' + esc(compRowName(e)) + '</div></div>' +
+              '<div class="ct-preview" style="height:' + rowHeight(e) + 'px"><iframe class="cp-frame" data-frame="p' + i + '" sandbox="allow-scripts allow-same-origin" title="' + esc(e.name) + '"></iframe></div>' +
+            '</div>').join("") +
+        '</div>';
+      entries.forEach((e, i) => { $('.cp-frame[data-frame="p' + i + '"]', box).src = e.url; });
     }
 
     /* ================= 页面组装 ================= */
@@ -1091,6 +927,8 @@
       const app = document.getElementById("app");
       const compItems = (ds.components && ds.components.items) || [];
       const compNav = compNavGroups(compItems);
+      const patItems = patternEntries(ds);
+      const patNav = compNavGroups(patItems);
       // 头部（面包屑/标题/作者/调用量/预览量）由展示端外层壳用 api1 数据渲染，本模板仅负责导航 + token 数据；
       // 固定菜单恒渲染，无数据的区块（组件/Pattern 等）以空态展示；「布局与适配」第一期隐藏
       app.innerHTML =
@@ -1110,6 +948,19 @@
                   compNav.loose.map(it => { const i = compItems.indexOf(it); return '<button data-cmp="' + i + '">' + esc(compRowName(it)) + '</button>'; }).join("") +
                 '</div></div>';
             }
+            if (s.key === "patterns" && patItems.length) {
+              /* Pattern 目录导航（与组件同款）：类目二级菜单（可折叠）→ Pattern 三级菜单；无目录的直接平铺 */
+              return '<div class="nav-grp">' +
+                '<button data-sec="patterns">' + ic + 'Pattern' + CHEV_ICON + '</button>' +
+                '<div class="nav-sub">' +
+                  patNav.groups.map(g =>
+                    '<div class="nav-category" data-nav-cat="' + esc(g.label) + '">' +
+                      '<button class="sub-h" data-cat="' + esc(g.label) + '"><span>' + esc(g.label) + '</span>' + CAT_CHEV_ICON + '</button>' +
+                      '<div class="nav-cat-items">' + g.items.map(it => { const i = patItems.indexOf(it); return '<button class="sub-l2" data-pat="' + i + '" title="' + esc(compRowName(it)) + '">' + esc(compRowName(it)) + '</button>'; }).join("") + '</div>' +
+                    '</div>').join("") +
+                  patNav.loose.map(it => { const i = patItems.indexOf(it); return '<button data-pat="' + i + '">' + esc(compRowName(it)) + '</button>'; }).join("") +
+                '</div></div>';
+            }
             return '<button data-sec="' + s.key + '">' + ic + s.label + '</button>';
           }).join("") + '</nav>' +
           '<div class="main" id="main" style="' + themeVars(deriveTheme(ds)) + '">' + SECTIONS.map(s =>
@@ -1122,9 +973,8 @@
       const main = document.getElementById("main");
       let scrollLock = false;
 
-      /* 组件默认展开：一级菜单 + 全部类目（用户可手动折叠，切到其他菜单不打扰展开状态） */
-      const compGrp = nav.querySelector(".nav-grp");
-      if (compGrp) compGrp.classList.add("open");
+      /* 组件/Pattern 默认展开：一级菜单 + 全部类目（用户可手动折叠，切到其他菜单不打扰展开状态） */
+      nav.querySelectorAll(".nav-grp").forEach(g => g.classList.add("open"));
       nav.querySelectorAll(".nav-category").forEach(cat => cat.classList.add("open"));
 
       function offsetIn(parent, el) { return el.getBoundingClientRect().top - parent.getBoundingClientRect().top + parent.scrollTop; }
@@ -1139,7 +989,22 @@
           const idx = Number(sub.dataset.cmp);
           const blk = document.getElementById("cmp-" + idx);
           if (blk) {
-            setNav("components", idx);
+            setNav("components", idx, null);
+            syncRoute("components", compItems[idx] && compItems[idx].id);
+            scrollLock = true;
+            main.scrollTo({ top: offsetIn(main, blk) - 24, behavior: "smooth" });
+            clearTimeout(main._unlock);
+            main._unlock = setTimeout(() => { scrollLock = false; }, 700);
+          }
+          return;
+        }
+        const patBtn = e.target.closest("[data-pat]");
+        if (patBtn) {
+          const idx = Number(patBtn.dataset.pat);
+          const blk = document.getElementById("patr-" + idx);
+          if (blk) {
+            setNav("patterns", null, idx);
+            syncRoute("patterns", patItems[idx] && patItems[idx].id);
             scrollLock = true;
             main.scrollTo({ top: offsetIn(main, blk) - 24, behavior: "smooth" });
             clearTimeout(main._unlock);
@@ -1153,19 +1018,56 @@
         if (card) {
           const grp = b.closest(".nav-grp");
           if (grp && !grp.classList.contains("open")) grp.classList.add("open");
+          syncRoute(b.dataset.sec, null);
           main.scrollTo({ top: offsetIn(main, card), behavior: "smooth" });
         }
       });
 
-      function setNav(sec, cmp) {
-        nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null));
+      /* URL 深链上报：滚动/点导航时把当前分区/条目报给宿主壳（壳侧 replaceState 实时跟随；仅变化时上报） */
+      let lastRoute = "";
+      function syncRoute(section, item) {
+        const key = section + (item ? "/" + item : "");
+        if (key === lastRoute) return;
+        lastRoute = key;
+        if (window.parent !== window) window.parent.postMessage({ type: "ds-scroll", section: section, item: item || undefined }, "*");
+      }
+
+      /* 深链落地：滚动到分区/条目行并高亮导航（boot 注入的初始深链与 ds-deep 消息共用） */
+      function applyDeep(deep) {
+        if (!deep || !deep.section) return false;
+        let blk = document.getElementById("sec-" + deep.section);
+        if (!blk) return false;
+        let cmp = null, pat = null;
+        if (deep.item && deep.section === "components") {
+          const i = compItems.findIndex(it => it.id === deep.item);
+          if (i >= 0) { blk = document.getElementById("cmp-" + i); cmp = i; }
+        } else if (deep.item && deep.section === "patterns") {
+          const i = patItems.findIndex(en => en.id === deep.item);
+          if (i >= 0) { blk = document.getElementById("patr-" + i); pat = i; }
+        }
+        scrollLock = true;
+        main.scrollTo({ top: Math.max(0, offsetIn(main, blk) - 24) });
+        clearTimeout(main._unlock);
+        main._unlock = setTimeout(() => { scrollLock = false; }, 700);
+        setNav(deep.section, cmp, pat);
+        lastRoute = deep.section + (deep.item ? "/" + deep.item : "");   // 与来路 URL 一致，避免 spy 重复上报
+        return true;
+      }
+      APPLY_DEEP = applyDeep;
+
+      function setNav(sec, cmp, pat) {
+        nav.querySelectorAll("[data-sec]").forEach(b => b.classList.toggle("on", b.dataset.sec === sec && cmp == null && pat == null));
         nav.querySelectorAll("[data-cmp]").forEach(b => b.classList.toggle("on", sec === "components" && Number(b.dataset.cmp) === cmp));
-        /* 滚动到组件区时高亮所在类目（sub-h），但不改变类目的展开/折叠状态（用户手动控制） */
+        nav.querySelectorAll("[data-pat]").forEach(b => b.classList.toggle("on", sec === "patterns" && Number(b.dataset.pat) === pat));
+        /* 滚动到组件/Pattern 区时高亮所在类目（sub-h），但不改变类目的展开/折叠状态（用户手动控制） */
         nav.querySelectorAll(".nav-category").forEach(cat => {
-          const active = cat.querySelector('[data-cmp].on');
+          const active = cat.querySelector('[data-cmp].on, [data-pat].on');
           const h = cat.querySelector(".sub-h");
           if (h) h.classList.toggle("on", !!active);
         });
+        /* 选中项随滚动上下移动时保持在侧边栏可见（nearest：已可见时不滚动；nav 滚动不触发 main 联动） */
+        const onBtn = nav.querySelector("[data-sec].on, [data-cmp].on, [data-pat].on");
+        if (onBtn) onBtn.scrollIntoView({ block: "nearest" });
       }
 
       main.addEventListener("scroll", () => {
@@ -1178,16 +1080,25 @@
         });
         const atEnd = main.scrollTop + main.clientHeight >= main.scrollHeight - 2;
         if (atEnd && SECTIONS.length) curKey = SECTIONS[SECTIONS.length - 1].key;
-        let cmp = null;
+        let cmp = null, pat = null;
         if (curKey === "components") {
           compItems.forEach((it, i) => {
             const blk = document.getElementById("cmp-" + i);
             if (blk && offsetIn(main, blk) <= top + 40) cmp = i;
           });
         }
-        setNav(curKey, cmp);
+        if (curKey === "patterns") {
+          patItems.forEach((it, i) => {
+            const blk = document.getElementById("patr-" + i);
+            if (blk && offsetIn(main, blk) <= top + 40) pat = i;
+          });
+        }
+        setNav(curKey, cmp, pat);
+        syncRoute(curKey,
+          curKey === "components" && cmp != null ? compItems[cmp].id :
+          curKey === "patterns" && pat != null ? patItems[pat].id : null);
       });
-      if (SECTIONS.length) setNav(SECTIONS[0].key, null);
+      if (!applyDeep(DEEP) && SECTIONS.length) setNav(SECTIONS[0].key, null, null);
 
       /* 返回：面包屑箭头 + "设计系统"文字 */
       // 返回已由展示端外层壳的面包屑处理（navigate），模板内不再有头部/返回逻辑
@@ -1216,9 +1127,13 @@
     }
 
     var booted = false;
+    /* 深链（{section, item}）：boot 收下、buildPage 渲染完落地；APPLY_DEEP 由 buildPage 注册供 ds-deep 消息转发 */
+    let DEEP = null;
+    var APPLY_DEEP = null;
     function boot(payload) {
       if (booted) return;
       booted = true;
+      DEEP = payload.deep || null;
       try {
         loadSystem(payload.id, payload.meta).catch(showError);
       } catch (err) {
@@ -1229,6 +1144,7 @@
     if (window.parent !== window) {
       window.addEventListener("message", e => {
         if (e.data && e.data.type === "ds-data") boot(e.data.data);
+        else if (e.data && e.data.type === "ds-deep" && APPLY_DEEP) APPLY_DEEP(e.data.deep || {});
       });
       window.parent.postMessage({ type: "ds-ready" }, "*");
     } else {

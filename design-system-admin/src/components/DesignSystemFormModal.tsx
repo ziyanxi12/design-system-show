@@ -11,24 +11,31 @@ import {
   Typography,
   Upload,
 } from 'antd'
-import { DownloadOutlined, InboxOutlined, PictureOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, DownloadOutlined, InboxOutlined, MinusCircleOutlined, PictureOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { api, ApiError, MAX_ZIP_BYTES } from '../api/client'
-import { authorLabel, type AuthorEntry, type DesignSystemItem, type DesignSystemMeta } from '../types'
+import { api, ApiError, MAX_PART_BYTES } from '../api/client'
+import type { PartFiles, PartIngestReport } from '../types'
+import {
+  authorLabel,
+  type AuthorEntry,
+  type DesignSystemItem,
+  type DesignSystemMeta,
+} from '../types'
 import { userOption } from '../utils/userOption'
 
 /**
- * 三态弹窗：新增 / 编辑 / 查看设计系统
- * - create：zip 包（紧凑拖拽，服务端解压解析）+ 作者多选（用户联想）+ 封面/图标（按钮选图）+ 名称/描述/默认
- * - edit：当前文件下载 + 可选替换 zip 包 + 当前封面/图标 + 可选换新 + 名称/作者/描述/默认
- * - view：只读展示 + 文件下载 + 封面/图标缩略图 + 查看完整 JSON
+ * 三态弹窗：新增 / 编辑 / 查看设计系统（octo-design-parts/1 五部件）
+ * - create：五个可选部件槽（DESIGN.md / tokens.json / 组件包 zip / Pattern 包 zip / skill 包 zip），
+ *   任选子集一次 multipart 提交；逐部件独立成败——失败部件红字汇总提示，其余部件正常入库；
+ *   一个部件都不选 = 纯壳系统（仅名称）
+ * - edit：各槽显示存量状态（item.parts）+ 可选替换；内容走 PUT /{slug}/parts（仅换提供部件，
+ *   未提供部件取存量），meta/封面/图标仍走 PATCH
+ * - view：同五个部件行——每行自身状态（✓/✗ + 计数/技能名）+ 自身文件下载
+ *   （DESIGN.md / tokens.json / skill 包；组件包/Pattern 包为解压子树无原件不提供下载），
+ *   底部小字附规范 id / 内容合计 / 更新时间
  *
- * 上传物为 zip 包（octo-design-zip/2：DESIGN.md + assets + 附件 .zip + tokens.json）；
- * >20MB 自动分片（client.ts uploadZipFlow，控制台打印分片日志）。
- *
- * 编辑提交流程：
- *   1. 选了新 zip 包 → PUT /{slug}/json（内容替换；name 跟 MD，封面/图标/作者/调用量保留）
- *   2. 再 PATCH /{slug} 提交表单变化 + 文件；无变化则跳过（避免脏操作日志）
+ * 上传要求（api.md「五部件格式」）：组件包 zip 内必须包含 components/ 目录（components/components/
+ * 同名双层嵌套自动剥离）；Pattern 包同理（patterns/ 目录）；skill 包第一层含 SKILL.md。
  */
 export type FormMode = 'create' | 'edit' | 'view'
 
@@ -44,12 +51,69 @@ const fmtSize = (n?: number) =>
 const MAX_IMG_BYTES = 2 * 1024 * 1024
 const ALLOWED_COVER_EXTS = ['jpg', 'jpeg', 'png', 'webp']
 const ALLOWED_ICON_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'svg']
-const ZIP_EXTS = ['zip']
+
+/** 五部件槽定义（label 展示名 / accept / 前端预检扩展名 / 槽位说明） */
+type PartKey = 'design_md' | 'tokens' | 'components' | 'patterns' | 'skill'
+
+interface PartSlot {
+  key: PartKey
+  label: string
+  accept: string
+  exts: string[]
+  hint: string
+}
+
+const PART_SLOTS: PartSlot[] = [
+  {
+    key: 'design_md',
+    label: 'DESIGN.md',
+    accept: '.md,text/markdown',
+    exts: ['md'],
+    hint: 'DESIGN.md · UTF-8 文本',
+  },
+  {
+    key: 'tokens',
+    label: 'tokens.json',
+    accept: '.json,application/json',
+    exts: ['json'],
+    hint: 'tokens.json · 唯一数据源（合法 JSON）',
+  },
+  {
+    key: 'components',
+    label: '组件包',
+    accept: '.zip,application/zip,application/x-zip-compressed',
+    exts: ['zip'],
+    hint: '组件包 zip · 内含 components/ 目录',
+  },
+  {
+    key: 'patterns',
+    label: 'Pattern 包',
+    accept: '.zip,application/zip,application/x-zip-compressed',
+    exts: ['zip'],
+    hint: 'Pattern 包 zip · 内含 patterns/ 目录',
+  },
+  {
+    key: 'skill',
+    label: 'skill 包',
+    accept: '.zip,application/zip,application/x-zip-compressed',
+    exts: ['zip'],
+    hint: 'skill 包 zip · 第一层含 SKILL.md（frontmatter name 非空）',
+  },
+]
 
 function validateImageFile(file: File, exts: string[], label: string): string | null {
   const ext = (file.name.split('.').pop() || '').toLowerCase()
   if (!exts.includes(ext)) return `${label}仅支持 ${exts.join('/')}，收到：${file.name}`
   if (file.size > MAX_IMG_BYTES) return `${label}超过 2MB 上限`
+  return null
+}
+
+/** 部件槽前端预检（扩展名/大小）；内容与结构校验由后端逐部件完成 */
+function validatePartFile(key: PartKey, file: File): string | null {
+  const slot = PART_SLOTS.find((s) => s.key === key)!
+  const ext = (file.name.split('.').pop() || '').toLowerCase()
+  if (!slot.exts.includes(ext)) return `${slot.label}仅支持 ${slot.exts.join('/')} 文件，收到：${file.name}`
+  if (file.size > MAX_PART_BYTES) return `${slot.label}超过 200MB 上限`
   return null
 }
 
@@ -65,7 +129,7 @@ const LABEL_WIDTH = 120
 const INPUT_WIDTH = 320
 const ROW_GAP = 20
 
-/** 紧凑拖拽区（可拖可点，区域小；width 按行内剩余空间定制，默认与输入框同宽） */
+/** 紧凑拖拽区（可拖可点；提示文字单行省略保证五个框恒定同高，hover title 看全文） */
 function CompactDropzone({
   accept,
   beforeUpload,
@@ -94,8 +158,22 @@ function CompactDropzone({
         gap: 8,
       }}
     >
-      <InboxOutlined style={{ fontSize: 20, color: '#6366f1' }} />
-      <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.4 }}>{hint}</div>
+      <InboxOutlined style={{ fontSize: 20, color: '#6366f1', flexShrink: 0 }} />
+      <div
+        title={hint}
+        style={{
+          fontSize: 13,
+          color: '#64748b',
+          lineHeight: 1.4,
+          flex: 1,
+          minWidth: 0,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {hint}
+      </div>
     </Upload.Dragger>
   )
 }
@@ -137,6 +215,19 @@ const Row = ({
   </div>
 )
 
+/** ingest 报告 → 失败部件汇总文案（成功部件不提示；全成功返回 null） */
+function ingestFailures(ingest: PartIngestReport | undefined): string | null {
+  if (!ingest) return null
+  const lines: string[] = []
+  for (const slot of PART_SLOTS) {
+    const info = ingest[slot.key]
+    if (info?.provided && info.ok === false) {
+      lines.push(`${slot.label}：${info.error ?? '未知错误'}`)
+    }
+  }
+  return lines.length ? lines.join('；') : null
+}
+
 export default function DesignSystemFormModal({
   mode,
   item,
@@ -150,9 +241,21 @@ export default function DesignSystemFormModal({
   const isCreate = mode === 'create'
   const isEdit = mode === 'edit'
 
-  // zip 包文件（create/edit 共用；内容解析在后端，前端只做扩展名/大小预检）
-  const [zipFile, setZipFile] = useState<File | null>(null)
-  const [errors, setErrors] = useState<string[]>([])
+  // 五部件所选文件（create/edit 共用；内容解析在后端，前端只做扩展名/大小预检）
+  const [partFiles, setPartFiles] = useState<Record<PartKey, File | null>>({
+    design_md: null,
+    tokens: null,
+    components: null,
+    patterns: null,
+    skill: null,
+  })
+  const [partErrors, setPartErrors] = useState<Record<PartKey, string | null>>({
+    design_md: null,
+    tokens: null,
+    components: null,
+    patterns: null,
+    skill: null,
+  })
 
   // 作者（AutoComplete 输入框 + /getAccount 联想，选中即得完整值；已选以可删除标签展示）
   const [authors, setAuthors] = useState<AuthorEntry[]>([])
@@ -182,8 +285,8 @@ export default function DesignSystemFormModal({
   // 打开时初始化（释放上次会话的 blob URL）
   useEffect(() => {
     if (!open) return
-    setZipFile(null)
-    setErrors([])
+    setPartFiles({ design_md: null, tokens: null, components: null, patterns: null, skill: null })
+    setPartErrors({ design_md: null, tokens: null, components: null, patterns: null, skill: null })
     setAuthors(isCreate ? [] : (item?.author ?? []))
     setAuthorOptions([])
     setAuthorKeyword('')
@@ -213,18 +316,17 @@ export default function DesignSystemFormModal({
     }
   }, [open, mode, item, form, isCreate])
 
-  /** zip 包预检（扩展名/大小）；内容解析与结构校验由后端完成 */
-  const handleZipFile = (f: File) => {
-    setZipFile(f)
-    setErrors([])
-    const ext = (f.name.split('.').pop() || '').toLowerCase()
-    if (!ZIP_EXTS.includes(ext)) {
-      setErrors(['仅支持上传 zip 包（DESIGN.md + assets + 附件 .zip）'])
-      return
-    }
-    if (f.size > MAX_ZIP_BYTES) {
-      setErrors([`文件 ${fmtSize(f.size)} 超过 200MB 上限`])
-    }
+  /** 部件槽文件选择（扩展名/大小预检；内容解析与结构校验由后端逐部件完成） */
+  const handlePartFile = (key: PartKey, f: File) => {
+    const err = validatePartFile(key, f)
+    setPartFiles((prev) => ({ ...prev, [key]: err ? null : f }))
+    setPartErrors((prev) => ({ ...prev, [key]: err }))
+  }
+
+  /** 移除已选部件文件 */
+  const removePartFile = (key: PartKey) => {
+    setPartFiles((prev) => ({ ...prev, [key]: null }))
+    setPartErrors((prev) => ({ ...prev, [key]: null }))
   }
 
   /** 作者联想搜索（/getAccount，300ms 防抖 + 超时取消；无匹配即无可选项，不支持手动输入） */
@@ -305,26 +407,54 @@ export default function DesignSystemFormModal({
     setIconBlobUrl(url)
   }
 
-  /** 提交：edit 先 PUT（如有新 zip 包）再 PATCH（如有变化；作者数组仅变化时提交） */
-  const submit = async () => {
-    if (isCreate && !zipFile) {
-      message.warning('请先选择 zip 包文件')
-      return
+  /** 收集已选部件 → PartFiles（仅含提供了的；空对象 = 纯壳） */
+  const collectParts = (): PartFiles => {
+    const parts: PartFiles = {}
+    for (const slot of PART_SLOTS) {
+      const f = partFiles[slot.key]
+      if (f) parts[slot.key] = f
     }
+    return parts
+  }
+
+  /** 提交：create 一次 multipart（部件 + meta）；
+   *  edit 先 PUT /{slug}/parts（如选了替换部件）再 PATCH（如有变化；作者数组仅变化时提交） */
+  const submit = async () => {
     setSubmitting(true)
     try {
       // validateFields 需在 try 内：校验失败时 antd reject 的是 {errorFields} 对象（非 Error）
       const values = await form.validateFields()
-      // edit 模式：选了新 zip 包 → PUT（服务端解压解析 + 内容替换）
-      if (isEdit && zipFile && item) {
-        await api.putJson(item.slug, zipFile)
+      const parts = collectParts()
+      if (isCreate) {
+        const result = await api.create(parts, {
+          name: values.name,
+          desc: values.desc,
+          default: values.default,
+        }, { coverFile, iconFile, authors })
+        // 逐部件独立成败：失败部件已忽略，红字汇总提示（成功部件照常入库）
+        const failed = ingestFailures(result.ingest)
+        if (failed) {
+          message.warning(`已新增「${result.name}」，但以下部件导入失败（已忽略）：${failed}`)
+        } else {
+          message.success(`已新增「${result.name}」`)
+        }
+        onClose()
+        onSuccess?.(result)
+        return
       }
       if (item) {
+        let updated: DesignSystemItem = item
+        // edit 模式：选了替换部件 → PUT /{slug}/parts（仅换提供部件；失败部件忽略并汇总提示）
+        if (isEdit && Object.keys(parts).length > 0) {
+          const result = await api.putParts(item.slug, parts)
+          const failed = ingestFailures(result.ingest)
+          if (failed) message.warning(`部件替换完成，但以下部件失败（已忽略，保留存量）：${failed}`)
+          updated = result
+        }
         const patch: Partial<DesignSystemMeta> = {}
         if (values.name !== item.name) patch.name = values.name
         if (values.desc !== (item.desc ?? '')) patch.desc = values.desc
         if (values.default !== (item.default ?? false)) patch.default = values.default
-        let updated = item
         // 作者变化判断：规范化后对比（服务端会补全 nickName/dept，比较时以关键字段为准）
         const normAuthors = (list: AuthorEntry[]) =>
           JSON.stringify(
@@ -347,16 +477,6 @@ export default function DesignSystemFormModal({
         message.success(`已更新「${values.name}」`)
         onClose()
         onSuccess?.(updated)
-      } else {
-        // create（>20MB 自动分片，控制台打印分片日志）
-        const result = await api.create(zipFile!, {
-          name: values.name,
-          desc: values.desc,
-          default: values.default,
-        }, { coverFile, iconFile, authors })
-        message.success(`已新增「${result.name}」`)
-        onClose()
-        onSuccess?.(result)
       }
     } catch (e) {
       // 校验失败的 reject 对象带 errorFields，字段错误已在表单上标红展示，无需额外提示
@@ -364,23 +484,6 @@ export default function DesignSystemFormModal({
       message.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e))
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  /** 下载 zip 示例模版（后端静态资源，走 /static 代理，与封面/图标同约定） */
-  const downloadTemplate = async () => {
-    try {
-      const res = await fetch('/static/design-systems/templates/design-system.template.zip')
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'design-system.template.zip'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '模版下载失败')
     }
   }
 
@@ -401,38 +504,16 @@ export default function DesignSystemFormModal({
     }
   }
 
-  /** 文件行下载：优先 zip 原件（用户面主文件）；无 zip 的旧数据回落 DESIGN.md → JSON */
-  const downloadCurrentFile = async () => {
-    if (!item) return
-    if (item.zip_url) {
-      await downloadByUrl(item.zip_url, `source-${item.source_slug || item.slug}.zip`)
-    } else if (item.design_md_url) {
-      await downloadByUrl(item.design_md_url, 'DESIGN.md')
-    } else {
-      try {
-        const data = await api.getJson(item.slug)
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'design-system.json'
-        a.click()
-        URL.revokeObjectURL(url)
-      } catch (e) {
-        message.error(e instanceof Error ? e.message : String(e))
-      }
-    }
-  }
-
   const title = useMemo(() => {
     if (isCreate) return '新增设计系统'
     if (isView) return `查看 — ${item?.name ?? ''}`
     return `编辑 — ${item?.name ?? ''}`
   }, [isCreate, isView, item?.name])
 
-  const canSubmit = isCreate ? !!zipFile && errors.length === 0 : true
+  const hasPartError = Object.values(partErrors).some(Boolean)
 
-  const fileInfoText = zipFile ? `${zipFile.name}（${fmtSize(zipFile.size)}）` : null
+  // 部件全部可选（纯壳系统合法）：提交门槛只有部件预检错误（名称必填由表单校验兜底）
+  const canSubmit = !hasPartError
 
   /** 输入框（view 态只读文本；required 触发前端必填校验） */
   const renderInput = (name: keyof DesignSystemMeta, placeholder?: string, required?: boolean) => {
@@ -582,94 +663,140 @@ export default function DesignSystemFormModal({
     )
   }
 
-  /** 文件行：create=zip 拖拽区 + 模版下载；edit/view=文件下载 + 可选替换拖拽区；view 另展示规范 id */
-  const renderFileRow = () => {
+  /** 部件存量状态文案（edit 槽位上方 / view 槽位行共用） */
+  const partStatusText = (key: PartKey): string => {
+    if (!item?.parts) return ''
+    const parts = item.parts
+    switch (key) {
+      case 'design_md':
+        return parts.design_md ? '已上传' : '未上传'
+      case 'tokens':
+        return parts.tokens ? '已上传（token 区块）' : '未上传'
+      case 'components':
+        return parts.components ? `已上传（${parts.components_count} 个组件）` : '未上传'
+      case 'patterns':
+        return parts.patterns ? `已上传（${parts.patterns_count} 个 Pattern）` : '未上传'
+      case 'skill':
+        return parts.skill ? `已上传（技能名：${item.skill_name ?? '—'}）` : '未上传'
+    }
+    return ''
+  }
+
+  /** 槽位自身的文件下载链接（view 槽位行内嵌；组件包/Pattern 包为解压子树无原件，不提供下载） */
+  const partDownloadLink = (key: PartKey) => {
+    if (!item) return null
+    if (key === 'design_md' && item.design_md_url) {
+      return (
+        <Typography.Link
+          onClick={() => downloadByUrl(item.design_md_url!, 'DESIGN.md')}
+          style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+        >
+          <DownloadOutlined />
+          下载
+        </Typography.Link>
+      )
+    }
+    if (key === 'tokens' && item.tokens_url) {
+      return (
+        <Typography.Link
+          onClick={() => downloadByUrl(item.tokens_url!, 'tokens.json')}
+          style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+        >
+          <DownloadOutlined />
+          下载
+        </Typography.Link>
+      )
+    }
+    if (key === 'skill' && item.skill_zip_url) {
+      return (
+        <Typography.Link
+          onClick={() => downloadByUrl(item.skill_zip_url!, item.skill_zip_url!.split('/').pop() || 'skill.zip')}
+          style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+        >
+          <DownloadOutlined />
+          下载
+        </Typography.Link>
+      )
+    }
+    return null
+  }
+
+  /** 单个部件槽（三态）：
+   *  view = 自身状态（✓/✗ + 计数/技能名）+ 自身文件下载；
+   *  create = 拖拽区（选中显示文件名）；
+   *  edit = 存量状态 + 可选替换拖拽区 */
+  const renderPartSlot = (slot: (typeof PART_SLOTS)[number]) => {
+    const file = partFiles[slot.key]
+    const err = partErrors[slot.key]
+    if (isView) {
+      const ok = !!item?.parts?.[slot.key]
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
+          {ok ? (
+            <CheckCircleOutlined style={{ color: '#52c41a' }} />
+          ) : (
+            <MinusCircleOutlined style={{ color: '#bfbfbf' }} />
+          )}
+          <span style={{ color: ok ? undefined : '#8c8c8c' }}>{partStatusText(slot.key)}</span>
+          {ok && partDownloadLink(slot.key)}
+        </div>
+      )
+    }
     if (isCreate) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: INPUT_WIDTH }}>
           <CompactDropzone
-            accept=".zip,application/zip,application/x-zip-compressed"
-            beforeUpload={handleZipFile}
-            hint="点击或拖拽 zip 包到此处 · ≤200MB（>20MB 自动分片）"
+            accept={slot.accept}
+            beforeUpload={(f) => handlePartFile(slot.key, f)}
+            hint={file ? `${file.name}（${fmtSize(file.size)}）· 点击重新选择` : slot.hint}
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <Button size="small" onClick={downloadTemplate}>
-              下载模版
-            </Button>
-            {fileInfoText && (
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {fileInfoText}
-              </Typography.Text>
-            )}
-          </div>
-          {errors.length > 0 && (
+          {err && (
             <Typography.Text type="danger" style={{ fontSize: 12 }}>
-              {errors.join('；')}
+              {err}
             </Typography.Text>
           )}
         </div>
       )
     }
-    // edit / view：当前文件下载链接 + 元信息
-    if (!item) return null
-    const mainLabel = item.zip_url
-      ? `source.zip（${fmtSize(item.file_size)}）`
-      : item.design_md_url
-        ? `DESIGN.md（${fmtSize(item.file_size)}）`
-        : `design-system.json（${fmtSize(item.file_size)}）`
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: INPUT_WIDTH }}>
-        <Typography.Link
-          onClick={downloadCurrentFile}
-          style={{ fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: INPUT_WIDTH }}>
+        <Typography.Text
+          type={item?.parts?.[slot.key] ? 'success' : 'secondary'}
+          style={{ fontSize: 12 }}
         >
-          <DownloadOutlined />
-          {mainLabel}
-        </Typography.Link>
-        {item.skill_zip_url && (
-          <Typography.Link
-            onClick={() => downloadByUrl(item.skill_zip_url!, item.skill_zip_url!.split('/').pop() || 'skill.zip')}
-            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          >
-            <DownloadOutlined />
-            下载附件（zip 内原文件名）
+          当前状态：{partStatusText(slot.key)}
+        </Typography.Text>
+        <CompactDropzone
+          accept={slot.accept}
+          beforeUpload={(f) => handlePartFile(slot.key, f)}
+          hint={
+            file
+              ? `将替换为：${file.name}（${fmtSize(file.size)}）`
+              : `替换 ${slot.label}（可选）`
+          }
+        />
+        {file && (
+          <Typography.Link style={{ fontSize: 12, width: 'fit-content' }} onClick={() => removePartFile(slot.key)}>
+            取消替换（保留存量）
           </Typography.Link>
         )}
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          规范 id {item.source_slug || item.slug} · 调用量 {item.usage ?? 0} · 更新于{' '}
-          {item.updated_at ? dayjs(item.updated_at).format('YYYY-MM-DD HH:mm') : '—'}
-        </Typography.Text>
-        {isEdit && (
-          <div style={{ marginTop: 4 }}>
-            <CompactDropzone
-              accept=".zip,application/zip,application/x-zip-compressed"
-              beforeUpload={handleZipFile}
-              hint="点击或拖拽新 zip 包替换（可选）· 内容全量替换"
-            />
-            {fileInfoText && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {fileInfoText}
-                </Typography.Text>
-                <Typography.Link
-                  style={{ fontSize: 12 }}
-                  onClick={() => {
-                    setZipFile(null)
-                    setErrors([])
-                  }}
-                >
-                  移除
-                </Typography.Link>
-              </div>
-            )}
-            {errors.length > 0 && (
-              <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                {errors.join('；')}
-              </Typography.Text>
-            )}
-          </div>
+        {err && (
+          <Typography.Text type="danger" style={{ fontSize: 12 }}>
+            {err}
+          </Typography.Text>
         )}
       </div>
+    )
+  }
+
+  /** view 底部小字：规范 id / 内容合计 / 更新时间 */
+  const renderViewMetaLine = () => {
+    if (!item) return null
+    return (
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        规范 id {item.source_slug || item.slug} · 内容合计 {fmtSize(item.file_size)} · 更新于{' '}
+        {item.updated_at ? dayjs(item.updated_at).format('YYYY-MM-DD HH:mm') : '—'}
+      </Typography.Text>
     )
   }
 
@@ -784,7 +911,7 @@ export default function DesignSystemFormModal({
         title={title}
         open={open}
         onCancel={onClose}
-        width={560}
+        width={620}
         destroyOnHidden
         footer={
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -805,16 +932,23 @@ export default function DesignSystemFormModal({
       >
         {/* component={false}：不渲染额外 <form> 元素，保持 div 行布局；Form.Item 需要该层提供 FormContext */}
         <Form form={form} component={false}>
-          <div style={{ padding: '8px 0' }}>
+          <div style={{ padding: '8px 0', maxHeight: '72vh', overflowY: 'auto' }}>
             <Row label="设计系统名称" required padContent={isView}>
               {renderInput('name', '设计系统名称', true)}
             </Row>
             <Row label="作者" padContent={isView}>
               {renderAuthorRow()}
             </Row>
-            <Row label="文件" padContent={isView}>
-              {renderFileRow()}
-            </Row>
+            {PART_SLOTS.map((slot) => (
+              <Row key={slot.key} label={slot.label} padContent={isView}>
+                {renderPartSlot(slot)}
+              </Row>
+            ))}
+            {isView && (
+              <Row label="" padContent>
+                {renderViewMetaLine()}
+              </Row>
+            )}
             <Row label="封面" padContent={isView}>
               {renderCoverRow()}
             </Row>
@@ -827,6 +961,13 @@ export default function DesignSystemFormModal({
             <Row label="设为默认" padContent={isView}>
               {renderSwitch('default')}
             </Row>
+            {isCreate && (
+              <Row label="">
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  五个部件全部可选（逐部件独立成败，失败部件自动忽略）；一个都不选 = 仅创建名称的纯壳系统，稍后可经「编辑」补传。
+                </Typography.Text>
+              </Row>
+            )}
           </div>
         </Form>
       </Modal>

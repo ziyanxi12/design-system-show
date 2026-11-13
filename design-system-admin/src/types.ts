@@ -35,22 +35,70 @@ export interface DesignSystemItem extends DesignSystemMeta {
   icon_url: string
   /** design-system.json 可直接 fetch 的地址 */
   json_url: string
-  /** DESIGN.md 原件可下载地址（zip 内提取件；旧数据可能为 null） */
+  /** DESIGN.md 原件可下载地址（design_md 部件落盘件；旧数据可能为 null） */
   design_md_url?: string | null
-  /** zip 原件可下载地址（source.zip） */
-  zip_url?: string | null
-  /** 附件（DESIGN.md 同级任意 .zip，保留原文件名）完整下载链接（zip 内无则 null） */
+  /** tokens.json 原件可下载地址（tokens 部件落盘件；老系统无原件为 null） */
+  tokens_url?: string | null
+  /** skill 包完整下载链接（无 skill 部件为 null） */
   skill_zip_url?: string | null
-  /** 技能名（附件 zip 第一层 SKILL.md frontmatter 的 name；无附件为 null） */
+  /** 技能名（skill 包 zip 第一层 SKILL.md frontmatter 的 name；无 skill 部件为 null） */
   skill_name?: string | null
+  /** 五部件存在性（编辑/查看用；展示端忽略） */
+  parts: DesignSystemParts
   /** 创建人 / 最后编辑人（account）及显示名（"昵称 account"，无用户记录时回落 account） */
   created_by: string
   updated_by: string
   created_by_name: string
   updated_by_name: string
-  /** 上传 zip 原件大小（旧数据为 MD 大小） */
+  /** {slug} 目录落盘内容合计（旧数据为 zip/MD 原件大小） */
   file_size?: number
   updated_at: string
+}
+
+/** 五部件存在性（api1 item.parts） */
+export interface DesignSystemParts {
+  /** source.md 落盘件存在 */
+  design_md: boolean
+  /** tokens.json 原件存在，或 json 含 token 区块（老系统按数据判断） */
+  tokens: boolean
+  /** json components 区块存在且有 items */
+  components: boolean
+  /** json patterns 区块存在且有 items */
+  patterns: boolean
+  /** skill 包落盘件存在 */
+  skill: boolean
+  components_count: number
+  patterns_count: number
+}
+
+export type DesignSystemPartKey = 'design_md' | 'tokens' | 'components' | 'patterns' | 'skill'
+
+/** 五部件文件集合（create / putParts 入参；全部可选，一个都不选 = 纯壳系统） */
+export interface PartFiles {
+  design_md?: File | null
+  tokens?: File | null
+  components?: File | null
+  patterns?: File | null
+  skill?: File | null
+}
+
+/** POST / PUT parts 响应的逐部件导入报告 */
+export interface PartIngestEntry {
+  provided: boolean
+  ok?: boolean
+  error?: string
+  size?: number
+  count?: number
+  /** 组件/Pattern 包检测到同名嵌套目录并已剥离 */
+  nested?: boolean
+  skill_name?: string
+}
+
+export type PartIngestReport = Record<DesignSystemPartKey, PartIngestEntry>
+
+/** create / putParts 响应：item + 顶层 ingest 报告 */
+export interface DesignSystemCreateResp extends DesignSystemItem {
+  ingest: PartIngestReport
 }
 
 export interface DesignSystemListResp {

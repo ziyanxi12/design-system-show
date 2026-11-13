@@ -1,22 +1,29 @@
-# 设计系统管理 API 契约（v2 · zip 上传）
+# 设计系统管理 API 契约（v4 · 五部件上传）
 
-> 前端：`design-system-admin`（管理台 5 栏：设计系统管理 / Zip 解析 / 人员管理 / 操作记录 / 数据统计）+ `design-system-app`（展示端）
+> 前端：`design-system-admin`（管理台 4 栏：设计系统管理 / 人员管理 / 操作记录 / 数据统计）+ `design-system-app`（展示端）
 > 后端：在 `lib-resource-service` 中新增 `routers/design_systems.py` 实现，存储走 `FILE_ROOT_DIR`
 > （本地 `./storage`，生产 `/data/resource`），文件相对路径 `design-systems/{slug}/…`
 >
-> **v3 变更**：上传物为 **zip 包**（octo-design-zip/2，四件套）：
-> `DESIGN.md`（**原文原样**提取存 `source.md`，展示端概览 fetch 后 markdown 渲染，不再机器解析）
-> + `assets/`（components、patterns 递归目录到 html，html 文件名 = 组件名）
-> + 附件（DESIGN.md 同级**任意 .zip**，不强制命名，保留原文件名可下载）
-> + **`tokens.json`（唯一数据源）**：服务端**转换为老 design-system.json 区块结构**（模板与存量零改动）——
-> color（主题感知取首主题）→ color.groups、type → typography、size → spacing（数值化）、radius（数值化）、
-> shadow（原样 css 串）；非法 JSON / 顶层非对象 → 400；分组缺失 → 模板空态；
-> **fontScale/fontScaleRegular/opacity/other 顶层原样保留（暂不渲染）**。
-> **slug 由后端分配**（8 位随机 `[a-z0-9]`，API 路径/落盘目录/静态 URL）；
+> **v4 变更**：上传物改为**五个独立部件**（multipart 各自可选、**逐部件独立成败**——失败部件
+> 忽略并在响应 `ingest` 里回报错误，其余部件正常入库）：
+> `design_md_file`（DESIGN.md：UTF-8 文本，**原文原样**存 `source.md`，展示端概览 fetch 后
+> markdown 渲染，不再机器解析）
+> + `tokens_file`（tokens.json：**唯一数据源**，UTF-8 合法 JSON，顶层为对象；服务端**转换为老
+> design-system.json 区块结构**（模板与存量零改动）——color（主题感知取首主题）→ color.groups、
+> type → typography、size → spacing（数值化）、radius（数值化）、shadow（原样 css 串）；
+> **fontScale 等多余分组顶层原样保留（暂不渲染）**；原件存 `{slug}/tokens.json`）
+> + `components_file`（组件包 zip：根须含 `components/` 目录，**兼容同名多层嵌套**
+> `components/components/…`——循环剥离同名子层后以最内层为扫描基目录；子目录层级 = group、
+> html 文件名 = 组件名；落盘 `{slug}/assets/components/**`）
+> + `patterns_file`（Pattern 包 zip：根须含 `patterns/` 目录，同名嵌套兼容同理；
+> 落盘 `{slug}/assets/patterns/**`）
+> + `skill_file`（skill 包 zip：zip **第一层**须含 SKILL.md（不允许嵌套），frontmatter `name`
+> 非空 ≤255 字符 → `skill_name`；原样落盘 `{slug}/{原文件名}`）。
+> **name 必填**（来源链：表单 → tokens.json.name）；**usage 不从任何文件派生**：新增恒 0，
+> 修正通道仅表单字段。**slug 由后端分配**（8 位随机 `[a-z0-9]`，API 路径/落盘目录/静态 URL）；
 > `source_slug` = tokens.json 的 `id`（预留，现无此字段 → 恒 = slug）。
-> **name 来源**：表单 → `tokens.json.name` → slug。
-> **usage 不从任何文件派生**：新增恒 0，修正通道仅表单字段。
-> 大文件分片：>20MB 走 `init → chunks → complete`（5MB/片，前端 console 打印分片日志）。
+> **旧端点已删除**：POST /parse（2a）、分片上传三端点（2b）、PUT /{slug}/json（旧 5 号）；
+> 单部件 ≤200MB multipart 直传，不再分片。
 >
 > 请求头：`X-User-Data`（AES-CBC 加密 `userInfo + loginTime`）；设计系统管理端点按
 > `DS_LOGIN_TTL_HOURS`（默认 24h）校验登录过期，超时/缺失 → `401 {"detail":"登录已过期，请重新登录"}`
@@ -27,7 +34,7 @@
 > app_id 校验），**设计系统模块不校验、无需携带**；
 > 人员搜索走独立服务 `GET /getAccount?keyword=`（mock 3090，需 `uiplusToken` 头），头像走 `GET /face/{account去首字符}/{size}`（mock 3091），见 mock-api/api.md。
 >
-> 生产 nginx：`client_max_body_size` 需 ≥ 25m（分片单片 5MB + 余量；直传路径 200MB 上限走分片，不受此限）。
+> 生产 nginx：`client_max_body_size` 需 ≥ 200m（单部件 ≤200MB，单请求携带全部所选部件 multipart 直传）。
 
 ## 通用约定
 
@@ -36,32 +43,36 @@
 - 错误响应：`{"detail": "错误描述"}`，状态码 400（校验失败）/ 404（不存在）/ 413（超限）；~~409（slug 重复）~~ **v2 移除**（slug 后端随机分配，结构上不可能冲突；同一 source_slug 可共存多条记录）
 - 时间格式：`design_systems` 表相关为 ISO 8601；白名单与操作记录接口返回 epoch 毫秒（见第 8/9 节）
 
-## zip 包格式（octo-design-zip/1）
+## 五部件格式（octo-design-parts/1）
 
-```
-xxx.zip                          ≤200MB
-├─ assets/
-│  ├─ components/                递归目录 → html 文件（文件名去扩展 = 组件名）
-│  └─ patterns/                  递归目录 → html 文件
-├─ DESIGN.md                     必须在 zip 根（octo-design-md/1 格式；支持单层包裹目录）
-└─ <任意名>.zip                   可选附件：DESIGN.md 同级任意 .zip 即视为附件（不强制命名）；
-                                 多个时取名称排序第一个；保留原文件名落盘（skill_zip_url 可下载）
-```
+新增（2 号）与部件替换（5 号）的 multipart 文件字段——**全部可选、逐部件独立成败**：
 
-**服务端处理**：zip 先落盘（`source.zip`）再解压 → `DESIGN.md` 解析为 design-system.json（复用
-`app/services/design_system_md.py`）→ 递归扫描 `assets/components`、`assets/patterns`
-（目录层级保留在 `group` 字段 + name 前缀；`items[].height` 固定写默认 160——展示端表格行
-预览高度，预留后续修正通道）。**双口径**：parse 预览响应（2a，落盘前无 URL，管理台解析页只能
-靠内嵌渲染）保留全量内嵌——html 源码进 `source.files[].code`、同目录 css/scss 一并内嵌、
-Pattern `states[].html` 内嵌、DESIGN.md 全文进 `overview.markdown`；**存储版 design-system.json 瘦身**
-（展示端 iframe src 直连 `/static` 资产，只用路径）：components 的 `source.files` 只留 html 条目 `{lang, path}`
-（去 code、去 css 条目）、patterns 的 `states[*]` 只留 `meta` 路径（去内嵌 html）、
-overview 去 `overview.markdown`（概览 fetch `source.md`，即 design_md_url 落盘件），
-`title/desc/items[].desc/items[].label/height` 等其余字段全部保留。
+| 字段 | 文件 | 要求 | 落盘 |
+|---|---|---|---|
+| `design_md_file` | DESIGN.md | UTF-8 文本（原文不解析；非 UTF-8 → 该部件失败） | `{slug}/source.md`（design_md_url） |
+| `tokens_file` | tokens.json | UTF-8（容忍 BOM）合法 JSON、顶层为对象（**唯一数据源**；分组结构零校验，缺失 → 模板空态） | `{slug}/tokens.json` 原件 + design-system.json token 区块 |
+| `components_file` | 组件包 .zip | zip 根须含 `components/` 目录（缺失 → 该部件失败）；子目录层级 = group、html 文件名 = 组件名；**同名多层嵌套兼容**（`components/components/…` 循环剥离，group/path 归一化不含重复层） | `{slug}/assets/components/**` + json components 区块 |
+| `patterns_file` | Pattern 包 .zip | 同组件包规则（`patterns/` 目录、同名嵌套兼容） | `{slug}/assets/patterns/**` + json patterns 区块 |
+| `skill_file` | skill 包 .zip | zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），frontmatter `name` 非空、≤255 字符；文件名不得与系统保留文件（`source.zip`/`source.md`/`design-system.json`/`tokens.json`，大小写不敏感）冲突 | `{slug}/{原文件名}`（skill_zip_url） |
 
-**安全校验（400）**：zip slip（`..`/绝对路径/反斜杠/symlink/特殊文件类型）、zip bomb
-（条目数 >5000、解压总量 >500MB、单文件 >10MB 且压缩比 >100）、缺 DESIGN.md、
-DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
+**服务端处理**：部件独立校验/解析（`app/services/design_system_zip.py`）→ design-system.json =
+tokens 转换区块（convert_tokens_to_legacy，模板原生渲染，存量系统同构）+ components/patterns
+（assets 扫描：目录层级保留在 `group` 字段 + name 前缀；`items[].height` 固定写默认 160——展示端
+表格行预览高度，预留后续修正通道）+ `coverage` 存在性标记。**存储版瘦身**（slim，落盘前统一执行）：
+components 的 `source.files` 只留 html 条目 `{lang, path}`（去内嵌 code 与 css 条目——展示端 iframe
+src 直连 `/static` 资产，只用路径）；patterns 的 `view.cards[].states[*]` 只留 `meta` 路径
+（去内嵌 html）；无 overview 内嵌（展示端概览 fetch `source.md`，即 design_md_url 落盘件）。
+
+**安全校验（部件级失败，不影响其他部件；均回报在响应 `ingest` 里）**：zip slip
+（`..`/绝对路径/反斜杠/symlink/特殊文件类型）、zip bomb（条目数 >5000、解压总量 >500MB、
+单文件 >10MB 且压缩比 >100）、同名冲突条目（同名/大小写变体既出现目录又出现文件）、
+缺 `components/`（`patterns/`）目录、tokens 非法 JSON / 顶层非对象、DESIGN.md 非 UTF-8、
+skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件、单部件 >200MB。
+
+**打包垃圾静默丢弃（不导致部件失败）**：macOS / Windows 压缩工具产物（`__MACOSX/`、
+`._*` AppleDouble、`.DS_Store`、`Thumbs.db`，含嵌套路径，如 `components/按钮/._Button.html`）
+不报错、不落盘、不参与解析与条目统计——用户本机「右键压缩」产生的 zip 必然携带，属正常现象
+（服务端 info 日志记录丢弃数量）。
 
 ## 接口
 
@@ -93,9 +104,10 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
       "icon_url": "/static/design-systems/icons/h-design.svg",
       "json_url": "/static/design-systems/a7xk92mf/design-system.json",
       "design_md_url": "/static/design-systems/a7xk92mf/source.md",
-      "zip_url": "/static/design-systems/a7xk92mf/source.zip",
+      "tokens_url": "/static/design-systems/a7xk92mf/tokens.json",
       "skill_zip_url": "/static/design-systems/a7xk92mf/my-skill-pack.zip",
       "skill_name": "text-to-ui",
+      "parts": { "design_md": true, "tokens": true, "components": true, "patterns": false, "skill": true, "components_count": 12, "patterns_count": 0 },
       "default": true,
       "file_size": 5242880,
       "created_by": "luowei",
@@ -109,7 +121,7 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
 ```
 
 - `slug`：**后端生成的 8 位随机 `[a-z0-9]`**（API 路径 / 落盘目录 / 静态 URL）；`source_slug` 为
-  DESIGN.md frontmatter 的 `id` 原样保留（不唯一，允许重复——同一规范 id 重传/多版本共存）；
+  tokens.json 的 `id` 原样保留（不唯一，允许重复——同一规范 id 重传/多版本共存）；
   存量数据 `source_slug == slug`（启动时回填），URL 零变化
 - `author`：**对象数组**，条目为 `/getAccount`（人员搜索服务）返回的**完整值**（驼峰原样）：
   `[{id, userID, account, nickName, dept: [4级部门数组]}]`；写入时服务端按 account 兜底补全 nickName/dept
@@ -119,13 +131,17 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
   头像来自独立服务 `GET /face/{account 去掉首字符}/{size}`（mock 3091 直连）
 - `icon` / `icon_url`：`icon` 为自定义图标相对路径（**null=未自定义**）；`icon_url` **恒有值**——未自定义时回落内置默认图标
   `design-systems/icons/icon-default.svg`（品牌紫圆角 + DS 字样；`BUILTIN_ICONS` 列表结构，便于后续扩充内置图标集）；
-  `file_size` 为上传的 **zip 原件**大小（旧 MD 数据为 MD 大小）
-- `json_url` / `design_md_url` / `zip_url` / `skill_zip_url`：design-system.json（服务端解析产物，展示端数据源）、
-  zip 内提取的 DESIGN.md 原件、**zip 原件**、**附件**（DESIGN.md 同级任意 .zip，保留原文件名）的可访问 URL；
-  `skill_name`：技能名 = 附件 zip 第一层 SKILL.md frontmatter 的 `name`（附件为四件套必选项；存量旧数据无附件时为 null）；
+  `file_size` 为 `{slug}` 目录落盘内容合计（旧 zip/MD 时代数据为原件大小）
+- `json_url` / `design_md_url` / `tokens_url` / `skill_zip_url`：design-system.json（服务端解析产物，展示端数据源）、
+  DESIGN.md 原件（design_md 部件落盘件）、tokens.json 原件（tokens 部件落盘件，老系统无原件为 null）、
+  skill 包（保留原文件名）的可访问 URL；
+  `skill_name`：技能名 = skill 包 zip 第一层 SKILL.md frontmatter 的 `name`（无 skill 部件为 null）；
   当前部署约定为**相对路径**（`PUBLIC_ORIGIN` 置空 → `/static/...`）：本地 dev 走前端 vite 代理
   （`/api`、`/static` 直通 8009，纯同源无 CORS 依赖）；生产由 nginx 同域配置 `/api` 与 `/static` 直通后端。
-  管理台文件行展示/下载的主文件是 source.zip；无 zip 的旧数据 `zip_url` 为 null（回落 DESIGN.md → JSON）
+  管理台文件行展示/下载的主文件是 DESIGN.md（source.md）；`parts`：**五部件存在性**——
+  `design_md`（source.md 落盘件）/ `tokens`（tokens.json 原件或 json 含 token 区块，老系统按数据判断）/
+  `components`·`patterns`（json 区块存在且有 items，附 `*_count` 计数）/ `skill`（skill 包落盘件）；
+  管理台编辑/查看用，展示端忽略
   （`PUBLIC_ORIGIN` 若非空仍会生成 `{PUBLIC_ORIGIN}{ROOT_PATH}/static/...` 绝对 URL，为 lib-resource 兼容保留）
 - `usage`：**不从 MD frontmatter 派生**（v2 需求：md 里的 usage 值不允许直接使用）——新增恒 0，
   修正通道仅 PATCH 的 `usage` 字段与 `/usage` 自增接口；重传保留现值
@@ -135,100 +151,50 @@ DESIGN.md 不可解析 / 结构校验失败（同 v1 规则 2-5）。
 - `created_by/updated_by` 为 account，`*_name` 为「昵称 account」显示名——直查 users 表解析，无记录时回落 account
 - 排序：`default` 置顶，其余按 `created_at` 倒序（slug 已随机化，字典序无意义）
 
-### 2. POST /api/design-systems —— 上传（zip 直传，≤200MB）
+### 2. POST /api/design-systems —— 上传（五部件，全部可选、逐部件独立成败）
 
 **请求**：`multipart/form-data`
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| file | File | **zip 包**（octo-design-zip/1 格式，≤200MB；仅收 .zip，服务端解压解析为 design-system.json） |
-| name / desc | 可选 | 卡片字段，覆盖从 MD 派生的默认值 |
-| author | 可选 | 作者，**JSON 数组字符串**（/getAccount 返回的完整值条目：`[{id, userID, account, nickName, dept}]`）；缺省回落 MD 派生（frontmatter author 视为 account）；写入时服务端按 account 兜底补全 |
-| usage / default | 可选 | 调用量 / 默认标记（usage 为手动修正通道；不传则恒 0，**不读 MD 值**） |
-| cover_file | File? | 可选自定义封面（jpg/png/webp ≤2MB），存 `design-systems/covers/{slug}.{ext}`；不上传则 `cover` 回落内置名（默认 `cover-cyan.jpg`） |
-| icon_file | File? | 可选图标（jpg/png/webp/svg ≤2MB），存 `design-systems/icons/{slug}.{ext}`；svg 服务端消毒（剥离 script/on*= / javascript: / foreignObject）+ 响应加 CSP 头 |
+| design_md_file / tokens_file / components_file / patterns_file / skill_file | File? | **五个可选部件**（octo-design-parts/1，要求见「五部件格式」节；单部件 ≤200MB） |
+| name | 必填* | 卡片名称（来源链：表单 → tokens.json.name；**两者皆无 → 400**「名称不能为空」；部件全空也允许——纯壳系统） |
+| desc / author / usage / default | 可选 | 卡片字段；author 为**JSON 数组字符串**（/getAccount 返回的完整值条目）；usage 不读任何文件值（缺省恒 0） |
+| cover_file / icon_file | File? | 可选自定义封面（jpg/png/webp ≤2MB，存 `design-systems/covers/{slug}.{ext}`）与图标（jpg/png/webp/svg ≤2MB，svg 服务端消毒）；不上传 cover 则回落内置名（默认 `cover-cyan.jpg`） |
 
-**服务端校验**（失败返回 400，detail 为错误说明/错误列表拼接）：
+**逐部件独立成败**（对齐「五部件格式」节的安全校验清单）：任一部件校验/解析失败 →
+**该部件忽略**（不落盘、不报 400），其余部件正常入库；响应 `ingest` 逐部件回报
+`{"provided", "ok"}` 与失败原因 / 计数 / 技能名。**请求级 400 仅限**：name 缺失
+（表单与 tokens 皆无）、`cover_file`/`icon_file` 超 2MB / 类型不符。
 
-1. 扩展名 .zip（其余 400「仅支持上传 zip 包」）
-2. zip 安全校验（slip / bomb / 条目数，见「zip 包格式」节）；**同名冲突条目**（同名/大小写变体
-   既出现目录又出现文件，如 `skill.zip/` + `skill.zip` 或 `Assets/` + `assets`）→ 400
-   「zip 内存在同名冲突条目：…」——否则解压落盘会以未捕获异常 500
-3. **四件套必须齐全**（根级或唯一包裹目录内，缺任一 → 400 **一次性列全缺失项**）：
-   `DESIGN.md` / `assets/` 目录（目录条目存在即放行，可为空）/ 附件 `.zip`（DESIGN.md 同级，不强制命名）
-   / **`tokens.json`**（DESIGN.md 同级，文件名固定，**唯一数据源**）；
-   四件套之外的文件与目录**丢弃不落盘、不报错**（服务端 info 日志打印丢弃清单）
-3a. **tokens.json 硬校验**：非法 JSON → 400「tokens.json 不是合法 JSON：…」；顶层非 JSON 对象 → 400；
-    **分组结构零校验**（color/… 缺失 → 模板渲染空态）
-4. 附件文件名与系统保留文件（`source.zip` / `source.md` / `design-system.json`，大小写不敏感）冲突 → 400
-5. `cover_file` / `icon_file` 超 2MB / 类型不符 → 400
-6. 附件须为合法 skill 包：附件 zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），
-   且 frontmatter `name` 字段非空、≤255 字符；否则 400
-7. zip 超 200MB → **413**
+**design-system.json 结构（v4）**：tokens.json **转换后的老区块结构**（color.groups / typography /
+spacing / radius / shadow——模板原生渲染，存量系统同构）+ `components`/`patterns`（assets 扫描：
+`items[].height` 行高默认 160；存储版不内嵌源码只留路径，见「五部件格式」节瘦身说明）
++ 多余分组顶层原样保留（fontScale 等，暂不渲染）+ `coverage` 存在性标记。DESIGN.md 原文存
+`source.md`（展示端概览 fetch 该文件后 markdown 渲染，读不到显示「未提取到」）。
 
-**DESIGN.md 不解析不校验**：全文原文（含 frontmatter）提取存 `source.md`（展示端概览 fetch 该文件后
-markdown 渲染，读不到显示「未提取到」）；parse 响应同步进 `overview.markdown` 供解析页预览，
-存储版经 slim 去除（不内嵌）。非 UTF-8 → 提取降级空文件（不影响其余数据）。
-**design-system.json 结构（v3）**：tokens.json **转换后的老区块结构**（color.groups / typography /
-spacing / radius / shadow——模板原生渲染，存量系统同构）+ `overview.markdown`（DESIGN.md 全文，
-仅 parse 响应——存储版经 slim 去除，概览 fetch `source.md`）+ `components`/`patterns`
-（assets 扫描：`items[].height` 行高默认 160；存储版不内嵌源码只留路径，见「服务端处理」双口径）
-+ 多余分组顶层原样保留（fontScale 等，暂不渲染）。
+**行为**：slug 后端随机生成（无冲突无 409；同 source_slug 重复上传可共存）；五个部件全部
+未提供时创建**纯壳系统**（json 仅 name + coverage）。写 `design_systems` 表记录与操作日志
+（detail 含部件成败摘要）；`default=true` 时清除其他系统的默认标记；`file_size` = `{slug}` 目录
+落盘内容合计。
 
-**行为**：解压解析为 design-system.json（含 components/patterns 区块）存
-`design-systems/{slug}/design-system.json`；zip 原件存 `source.zip`（`source_zip_path` 列）；
-DESIGN.md 提取存 `source.md`（`source_md_path` 列）；附件原样存
-`design-systems/{slug}/{附件原文件名}`（`skill_zip_path` 列）；assets 目录解压到
-`design-systems/{slug}/assets/**`（html/css 等经 /static 可直接访问）。**slug 后端随机生成**——
-无冲突无 409；同 source_slug 重复上传可共存（多版本/分支场景）。写 `design_systems`
-表记录与操作日志；`default=true` 时清除其他系统的默认标记。
-
-**响应**：同列表 item 结构（`slug` 为新生成的随机 id）。
-
-### 2a. POST /api/design-systems/parse —— zip 解析预览（不落库）
-
-管理台「Zip 解析」页数据源：上传 zip → 返回解析结果，右侧模板渲染预览。
-
-**请求**：`multipart/form-data`，字段 `file`（zip，直传 ≤200MB，校验同上传：安全校验/同名冲突/四件套/tokens.json JSON/保留名/skill 附件）。
-
-**响应**：
+**响应**：列表 item 结构（`slug` 为新生成的随机 id）+ 顶层 `ingest` 逐部件报告：
 
 ```json
 {
-  "ds": { "…": "design-system.json 同构 dict（token 区块 + components/patterns）" },
-  "stats": {
-    "slug": "h-design", "name": "…",
-    "components": 12, "patterns": 3,
-    "levels": ["basic", "form", "list"],
-    "zip_size": 5242880
-  },
-  "skill_zip": { "present": true, "skill_name": "text-to-ui", "filename": "my-skill-pack.zip", "size": 1048576, "content_base64": "…" }
+  "…": "item 字段（含 parts 存在性）",
+  "ingest": {
+    "design_md":   { "provided": true, "ok": true, "size": 20480 },
+    "tokens":      { "provided": true, "ok": false, "error": "tokens.json 不是合法 JSON：…" },
+    "components":  { "provided": true, "ok": true, "count": 8, "nested": true },
+    "patterns":    { "provided": false },
+    "skill":       { "provided": true, "ok": true, "skill_name": "text-to-ui", "size": 1048576 }
+  }
 }
 ```
 
-- `skill_zip.filename`：附件原文件名（不强制命名）；`content_base64`：附件 ≤50MB 时 base64 回传
-  （管理台「Zip 解析」页直接提供下载链接），超限为 null（提示入库后经 `skill_zip_url` 下载）
-- `skill_zip.skill_name`：技能名 = 附件 zip **第一层** SKILL.md frontmatter 的 `name` 字段；
-  附件为四件套必选项（`present` 恒 true），不合规（非 zip / 缺 SKILL.md / 缺 name）→ 400（与上传校验一致）
-
-### 2b. 分片上传（>20MB 由前端自动切换）
-
-```
-POST /api/design-systems/uploads/init        body: {"filename": "x.zip", "size": 52428800}
-  → {"upload_id": "…32hex…", "chunk_size": 5242880, "chunk_count": 10}
-PUT  /api/design-systems/uploads/{upload_id}/chunks/{index}
-  body: raw binary（Content-Type: application/octet-stream；单片 5MB，末片为余量）
-  → {"received": 3, "size": 5242880}
-POST /api/design-systems/uploads/{upload_id}/complete
-  multipart 表单（name/desc/author/usage/default/cover_file/icon_file，同上传；
-  另可选 slug 字段 = 重传模式，语义对齐 PUT /{slug}/json）
-  → 合并校验 → zip 导入 → 同列表 item 结构
-```
-
-- 会话目录 `FILE_ROOT_DIR/design-systems/uploads/{upload_id}/`（meta.json + `{index}.part`），
-  **TTL 24h 自动清理**（init 时顺带扫描）；分片序号/大小不符、会话缺失或已结束 → 400
-- 导入失败（zip 内容问题）→ 400，会话清理；成功 → 会话清理后返回 item
-- 前端（client.ts `uploadZipFlow`）按大小自动切换直传/分片，**console.log 打印每片进度与成功/失败**（v2 需求）
+- `components/patterns.count`：扫描出的叶子 html 数；`nested`：检测到同名嵌套目录并已剥离（提示性）
+- `skill.skill_name`：SKILL.md frontmatter name；失败部件的 `error` 为可展示的原因描述
 
 ### 3. GET /api/design-systems/{slug}/json —— 详情 JSON
 
@@ -250,15 +216,22 @@ POST /api/design-systems/uploads/{upload_id}/complete
 **行为**：更新记录与 `updated_at`，写操作日志；`default=true` 时清除其他默认。
 **响应**：更新后的 item。
 
-### 5. PUT /api/design-systems/{slug}/json —— 重传覆盖（zip）
+### 5. PUT /api/design-systems/{slug}/parts —— 部件替换
 
-**请求**：`multipart/form-data`，字段 `file`（新 **zip 包**，仅收 .zip，≤200MB；>20MB 前端走分片 complete 的 `slug` 重传模式，语义一致）。
-**校验**：同上传 1-5（zip 安全 + MD 结构）。
-**行为**：解压解析后**全量替换内容文件**：design-system.json / source.zip / source.md / 附件
-（新包无附件或附件名不同时，按 `skill_zip_path` 列清理旧附件——保留原文件名后固定路径
-「覆盖」不到旧文件）/ assets/**（目录整体替换）；`name`/`file_size` 跟随新 MD/zip；
-MD id 变化只更新 `source_slug`（slug 与落盘目录不动，操作日志记录变化）；
-**封面/图标/作者/调用量/描述/默认标记保留**（管理字段不被覆盖）。
+**请求**：`multipart/form-data`，字段同 2 号的五个部件（`design_md_file` / `tokens_file` /
+`components_file` / `patterns_file` / `skill_file`），**至少提供一个**（缺失 → 400「未提供任何部件文件」）。
+
+**行为**（逐部件独立成败，响应 `ingest` 报告同 2 号）：
+- **只换提供部件的内容**：components/patterns → `assets/{group}` 子树整体替换 + json 区块重建；
+  tokens → 剔除旧区块（剔除集 = 标准五键 ∪ 旧 tokens 原件顶层键）后合入新转换结果，
+  **name/id/cover/meta 不跟随**（管理字段归 PATCH）；skill → 原文件名落盘，新名与旧附件不同时
+  按 `skill_zip_path` 列自动清理旧文件；DESIGN.md → `source.md` 覆盖
+- **未提供部件取存量**：老系统无 tokens 原件 → 存量 json 的 token 区块原样保留（编辑兼容）
+- **管理字段不受影响**：name/source_slug/作者/封面/图标/调用量/描述/默认标记走 PATCH /{slug}
+- 写操作日志（action = `update_parts`，detail 含部件成败摘要）；`file_size` 重算
+- slug 不存在 → 404；软删系统不可见（404）
+
+**响应**：同 2 号（item + `ingest`）。
 
 ### 6. DELETE /api/design-systems/{slug} —— 删除
 
@@ -496,7 +469,7 @@ is_active（软删）、created_at/updated_at。
 |---|---|
 | page | 页码，≥1，默认 1 |
 | limit | 每页条数，1-100，默认 20 |
-| action | 可选：`create` / `update_meta` / `reupload` / `delete` / `update` |
+| action | 可选：`create` / `update_meta` / `update_parts` / `delete` / `update` |
 | target_type | 可选：`design_system` / `ds_whitelist` |
 
 **响应**：
@@ -521,7 +494,7 @@ is_active（软删）、created_at/updated_at。
 ```
 
 - `created_at` 为 epoch 毫秒；`detail` 已解析为对象（无则 null）
-- 动作枚举：设计系统 → create / update_meta / reupload / delete；白名单 → create / update / delete
+- 动作枚举：设计系统 → create / update_meta / update_parts / delete；白名单 → create / update / delete
 
 ## 数据表（design_systems）
 
@@ -529,7 +502,7 @@ is_active（软删）、created_at/updated_at。
 |---|---|---|
 | id | int PK | 自增 |
 | slug | varchar(100) UNIQUE | 系统标识（**后端生成 8 位随机 [a-z0-9]**）：API 路径 / 落盘目录 / 静态 URL |
-| source_slug | varchar(100) | DESIGN.md frontmatter 的 id 原样保留（**不唯一，允许重复**；展示/搜索/追溯；**id 可缺失**，缺失回落 slug，不校验格式）。存量数据启动时回填 = slug |
+| source_slug | varchar(100) | tokens.json 的 `id` 原样保留（**不唯一，允许重复**；展示/搜索/追溯；**id 可缺失**，缺失回落 slug，不校验格式）。存量数据启动时回填 = slug |
 | name / desc | varchar(255) / text | 卡片字段 |
 | usage | int | 调用量（默认 0；**不从 MD 派生**） |
 | views | int | 预览量（默认 0；展示端详情页每次加载自动 +1，走 /views 接口） |
@@ -538,10 +511,10 @@ is_active（软删）、created_at/updated_at。
 | icon | text | 图标相对路径（design-systems/icons/{slug}.svg），无则空 |
 | is_default | bool | 默认系统（全局至多一个） |
 | file_path | varchar(500) | 解析产物 JSON 相对路径 |
-| source_md_path | varchar(500) | DESIGN.md 原件相对路径（design_md_url 数据源，软删重建时也更新） |
-| source_zip_path | varchar(500) | zip 原件相对路径（zip_url 数据源；旧 MD 数据为 NULL） |
-| skill_zip_path | varchar(500) | 附件相对路径（DESIGN.md 同级任意 .zip，保留原文件名；skill_zip_url 数据源） |
-| file_size | int | 上传 zip 原件 bytes（旧数据为 MD 大小） |
+| source_md_path | varchar(500) | DESIGN.md 原件相对路径（design_md_url 数据源，design_md 部件替换时更新） |
+| source_zip_path | varchar(500) | **旧 zip 直传时代历史遗留**（v4 起不再读取、不对外暴露；列保留仅为存量数据不动） |
+| skill_zip_path | varchar(500) | skill 包相对路径（保留上传原文件名；skill_zip_url 数据源；skill 部件替换换名时旧文件自动清理） |
+| file_size | int | `{slug}` 目录落盘内容合计（design-system.json + source.md + tokens.json + assets/** + skill 包；旧数据为 zip/MD 原件大小） |
 | created_by / updated_by | varchar(100) | 操作人（AuthMiddleware 解密） |
 | is_deleted | int | 软删标记 |
 | created_at / updated_at | datetime | |
@@ -553,15 +526,14 @@ is_active（软删）、created_at/updated_at。
 └─ design-systems/
    ├─ covers/                         内置封面（cover-blue/cyan/purple/violet.jpg）+ 自定义封面（{slug}.{jpg|png|webp}）
    ├─ icons/                          内置默认图标（icon-default.svg）+ 自定义图标（{slug}.{jpg|png|webp|svg}；svg 消毒 + CSP 响应头）
-   ├─ uploads/                         分片上传会话目录（{upload_id}/meta.json + {index}.part，TTL 24h 清理）
-   ├─ templates/                       design-system.template.zip（v2 zip 示例模版：DESIGN.md + assets 骨架 + 示例附件）
-   ├─ a7xk92mf/                        （slug = 后端 8 位随机）
-   │  ├─ design-system.json           服务端解析产物（token 区块 + components/patterns，展示端数据源）
-   │  ├─ source.zip                    上传 zip 原件（zip_url 可下载，可追溯）
-   │  ├─ source.md                     zip 内提取的 DESIGN.md
-   │  ├─ my-skill-pack.zip             附件原样保留（原文件名；skill_zip_url 可下载）
-   │  └─ assets/{components,patterns}/…  解压资产（html/css 经 /static 可直接访问）
-   └─ h-design/…                       （存量：design-system.json + source.md 两件）
+   ├─ a7xk92mf/                       （slug = 后端 8 位随机）
+   │  ├─ design-system.json           服务端解析产物（token 区块 + components/patterns，展示端数据源；存储版已瘦身——不内嵌源码/概览）
+   │  ├─ source.md                    design_md 部件落盘件（DESIGN.md 原文，展示端概览数据源）
+   │  ├─ tokens.json                  tokens 部件原件（唯一数据源留档；老系统无此文件）
+   │  ├─ my-skill-pack.zip            skill 包原样保留（上传原文件名；skill_zip_url 可下载）
+   │  └─ assets/{components,patterns}/…  组件包 / Pattern 包落盘资产（html/css 经 /static 可直接访问；同名嵌套层已剥离）
+   ├─ h-design/…                      （存量：design-system.json + source.md 两件，编辑部件时原样兼容）
+   └─ zips-era/…                      （旧 zip 直传时代系统：磁盘上可能残留 source.zip 历史文件，v4 起无任何入口引用）
 ```
 
 ## 种子迁移
