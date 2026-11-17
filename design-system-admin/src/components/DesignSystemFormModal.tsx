@@ -260,6 +260,7 @@ export default function DesignSystemFormModal({
     components: null,
     patterns: null,
     skill: null,
+    preview: null,
   })
 
   // 作者（AutoComplete 输入框 + /getAccount 联想，选中即得完整值；已选以可删除标签展示）
@@ -290,8 +291,8 @@ export default function DesignSystemFormModal({
   // 打开时初始化（释放上次会话的 blob URL）
   useEffect(() => {
     if (!open) return
-    setPartFiles({ design_md: null, tokens: null, components: null, patterns: null, skill: null })
-    setPartErrors({ design_md: null, tokens: null, components: null, patterns: null, skill: null })
+    setPartFiles({ design_md: null, tokens: null, components: null, patterns: null, skill: null, preview: null })
+    setPartErrors({ design_md: null, tokens: null, components: null, patterns: null, skill: null, preview: null })
     setAuthors(isCreate ? [] : (item?.author ?? []))
     setAuthorOptions([])
     setAuthorKeyword('')
