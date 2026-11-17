@@ -9,6 +9,9 @@ const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 10 10" fill="none"><
 const USAGE_ICON = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="0.875" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M10.9375 6.98558C10.9375 8.38936 10.1975 9.62093 9.08492 10.3142L9.08456 11.7112C9.08456 11.969 8.87562 12.1779 8.61789 12.1779L5.38211 12.1779C5.12438 12.1779 4.91544 11.969 4.91544 11.7112L4.91508 10.3142C3.80252 9.62093 3.0625 8.38936 3.0625 6.98558C3.0625 4.81892 4.82538 3.0625 7 3.0625C9.17462 3.0625 10.9375 4.81892 10.9375 6.98558Z" fill-rule="evenodd"/><line x1="4.91552734" x2="9.08464434" y1="13.4472926" y2="13.4472926"/><path d="M6.99984 0.729492L6.99984 1.45866M11.434 2.56618L10.918 3.08178M13.2707 7.00033L12.5415 7.00033M0.729004 7.00033L1.45817 7.00033M2.56569 2.56618L3.08129 3.08178" /></svg>'
 const VIEWS_ICON = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 7s2-3.5 5.5-3.5S12.5 7 12.5 7 10.5 10.5 7 10.5 1.5 7 1.5 7z"/><circle cx="7" cy="7" r="1.7"/></svg>'
 
+/** 预览页去缓存：追加时间戳参数，每次进详情页强制拉最新 HTML（preview zip 重新上传后不被旧缓存挡住） */
+const cacheBust = (u: string) => `${u}${u.includes("?") ? "&" : "?"}t=${Date.now()}`
+
 /**
  * 设计系统详情页 —— 头部（外层壳）+ Token Viewer 模板（iframe）。
  *
@@ -203,7 +206,7 @@ export default function DesignSystemDetail(props: { id: string; section?: string
               </Show>
               <iframe
                 ref={iframe}
-                src={m().previewUrl ?? "./design-systems/detail/template.html"}
+                src={cacheBust(m().previewUrl ?? "./design-systems/detail/template.html")}
                 title="设计系统详情"
                 style="width:100%;height:100%;border:0;display:block"
                 onLoad={() => setLoaded(true)}
