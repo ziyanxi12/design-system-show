@@ -141,7 +141,7 @@ export default function DesignSystemDetail(props: { id: string; section?: string
         {(m: () => DsMeta) => (
           <>
             <style>{`
-              .dsd-head { background:#fff; padding:22px 24px 0 40px; height:134px; flex-shrink:0; }
+              .dsd-head { box-sizing:border-box; background:#fff; padding:22px 24px 0 40px; height:134px; flex-shrink:0; }
               .dsd-head .crumb { display:flex; align-items:center; gap:8px; color:#777777; height:24px; font-size:14px; margin-left:-4px; cursor:pointer; }
               .dsd-head .crumb .back { width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; border-radius:4px; color:#777777; }
               .dsd-head .crumb .back:hover { background:rgba(0,0,0,0.05); }
