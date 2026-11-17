@@ -16,6 +16,8 @@ export type DsMeta = {
   iconUrl?: string
   /** design-system.json 完整 URL（api1 的 json_url，详情页数据源） */
   jsonUrl?: string
+  /** 预览页面包入口 html 完整 URL（api1 的 preview_url；有值时详情页 iframe 直连该页，不走模板页） */
+  previewUrl?: string | null
   default?: boolean
 }
 
@@ -51,6 +53,8 @@ export type ApiItem = {
   cover_url: string
   icon_url: string
   json_url: string
+  /** 预览页面包入口 html URL（无 preview 部件为 null） */
+  preview_url: string | null
   default?: boolean
 }
 
@@ -78,6 +82,7 @@ export function itemToMeta(i: ApiItem): DsMeta {
     coverImg: i.cover_url,
     iconUrl: i.icon_url,
     jsonUrl: i.json_url,
+    previewUrl: i.preview_url ?? null,
     default: i.default,
   }
 }

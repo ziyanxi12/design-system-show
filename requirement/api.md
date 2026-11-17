@@ -1,8 +1,12 @@
-# 设计系统管理 API 契约（v4 · 五部件上传）
+# 设计系统管理 API 契约（v4.1 · 六部件上传）
 
 > 前端：`design-system-admin`（管理台 4 栏：设计系统管理 / 人员管理 / 操作记录 / 数据统计）+ `design-system-app`（展示端）
 > 后端：在 `lib-resource-service` 中新增 `routers/design_systems.py` 实现，存储走 `FILE_ROOT_DIR`
 > （本地 `./storage`，生产 `/data/resource`），文件相对路径 `design-systems/{slug}/…`
+>
+> **v4.1 变更**：新增第六部件 `preview_file`（预览页面包 zip：整站 html，含 html 即可、
+> `index.html` 优先；后端解压落盘 `{slug}/preview/**`，api1/1a 新增 `preview_url` 与
+> `parts.preview`；展示端详情页检测到 `preview_url` 直接 iframe 直连该页，不再走模板页）。
 >
 > **v4 变更**：上传物改为**五个独立部件**（multipart 各自可选、**逐部件独立成败**——失败部件
 > 忽略并在响应 `ingest` 里回报错误，其余部件正常入库）：
@@ -44,7 +48,7 @@
 - 错误响应：`{"detail": "错误描述"}`，状态码 400（校验失败）/ 404（不存在）/ 413（超限）；~~409（slug 重复）~~ **v2 移除**（slug 后端随机分配，结构上不可能冲突；同一 source_slug 可共存多条记录）
 - 时间格式：`design_systems` 表相关为 ISO 8601；白名单与操作记录接口返回 epoch 毫秒（见第 8/9 节）
 
-## 五部件格式（octo-design-parts/1）
+## 六部件格式（octo-design-parts/1）
 
 新增（2 号）与部件替换（5 号）的 multipart 文件字段——**全部可选、逐部件独立成败**：
 
@@ -54,7 +58,8 @@
 | `tokens_file` | tokens.json | UTF-8（容忍 BOM）合法 JSON、顶层为对象（**唯一数据源**；分组结构零校验，缺失 → 模板空态） | `{slug}/tokens.json` 原件 + design-system.json token 区块 |
 | `components_file` | 组件包 .zip | zip 根须含 `components/` 目录（缺失 → 该部件失败）；子目录层级 = group、html 文件名 = 组件名；**同名多层嵌套兼容**（`components/components/…` 循环剥离，group/path 归一化不含重复层） | `{slug}/assets/components/**` + json components 区块 |
 | `patterns_file` | Pattern 包 .zip | 同组件包规则（`patterns/` 目录、同名嵌套兼容） | `{slug}/assets/patterns/**` + json patterns 区块 |
-| `skill_file` | skill 包 .zip | zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），frontmatter `name` 非空、≤255 字符；文件名不得与系统保留文件（`source.zip`/`source.md`/`design-system.json`/`tokens.json`，大小写不敏感）冲突 | `{slug}/{原文件名}`（skill_zip_url） |
+| `skill_file` | skill 包 .zip | zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），frontmatter `name` 非空、≤255 字符；文件名不得与系统保留文件（`source.zip`/`source.md`/`design-system.json`/`tokens.json`/`preview`，大小写不敏感）冲突 | `{slug}/{原文件名}`（skill_zip_url） |
+| `preview_file` | 预览页面包 .zip | **zip 里须含 html 文件**：入口 = 根下 `index.html`（大小写不敏感）；无 `index.html` 时根下**唯一** `.html` 兜底；无 html / 多个 html 且无 index.html → 该部件失败。根无 html 且仅一个目录条目时**单层任意名包裹自动剥离**（右键压缩兼容，循环最多 3 层）；**内容不解析不校验**（整站原样落盘） | `{slug}/preview/**`（preview_url 指向入口 html） |
 
 **服务端处理**：部件独立校验/解析（`app/services/design_system_zip.py`）→ design-system.json =
 tokens 转换区块（convert_tokens_to_legacy，模板原生渲染，存量系统同构）+ components/patterns
@@ -68,7 +73,7 @@ src 直连 `/static` 资产，只用路径）；patterns 的 `view.cards[].state
 （`..`/绝对路径/反斜杠/symlink/特殊文件类型）、zip bomb（条目数 >5000、解压总量 >500MB、
 单文件 >10MB 且压缩比 >100）、同名冲突条目（同名/大小写变体既出现目录又出现文件）、
 缺 `components/`（`patterns/`）目录、tokens 非法 JSON / 顶层非对象、DESIGN.md 非 UTF-8、
-skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件、单部件 >200MB。
+skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件、预览页面包无 html / 多 html 且无 index.html / 包裹超过 3 层、单部件 >200MB。
 
 **打包垃圾静默丢弃（不导致部件失败）**：macOS / Windows 压缩工具产物（`__MACOSX/`、
 `._*` AppleDouble、`.DS_Store`、`Thumbs.db`，含嵌套路径，如 `components/按钮/._Button.html`）
@@ -108,7 +113,8 @@ skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件�
       "tokens_url": "/static/design-systems/a7xk92mf/tokens.json",
       "skill_zip_url": "/static/design-systems/a7xk92mf/my-skill-pack.zip",
       "skill_name": "text-to-ui",
-      "parts": { "design_md": true, "tokens": true, "components": true, "patterns": false, "skill": true, "components_count": 12, "patterns_count": 0 },
+      "preview_url": "/static/design-systems/a7xk92mf/preview/index.html",
+      "parts": { "design_md": true, "tokens": true, "components": true, "patterns": false, "skill": true, "preview": true, "components_count": 12, "patterns_count": 0 },
       "default": true,
       "file_size": 5242880,
       "created_by": "luowei",
@@ -137,11 +143,13 @@ skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件�
   DESIGN.md 原件（design_md 部件落盘件）、tokens.json 原件（tokens 部件落盘件，老系统无原件为 null）、
   skill 包（保留原文件名）的可访问 URL；
   `skill_name`：技能名 = skill 包 zip 第一层 SKILL.md frontmatter 的 `name`（无 skill 部件为 null）；
+  `preview_url`：预览页面包**入口 html** 的可访问 URL（`{slug}/preview/` 下；无 preview 部件为 null——
+  展示端检测到该字段即 iframe 直连该页，不再走模板页，也不再发 ds-data 注入）；
   当前部署约定为**相对路径**（`PUBLIC_ORIGIN` 置空 → `/static/...`）：本地 dev 走前端 vite 代理
   （`/api`、`/static` 直通 8009，纯同源无 CORS 依赖）；生产由 nginx 同域配置 `/api` 与 `/static` 直通后端。
-  管理台文件行展示/下载的主文件是 DESIGN.md（source.md）；`parts`：**五部件存在性**——
+  管理台文件行展示/下载的主文件是 DESIGN.md（source.md）；`parts`：**六部件存在性**——
   `design_md`（source.md 落盘件）/ `tokens`（tokens.json 原件或 json 含 token 区块，老系统按数据判断）/
-  `components`·`patterns`（json 区块存在且有 items，附 `*_count` 计数）/ `skill`（skill 包落盘件）；
+  `components`·`patterns`（json 区块存在且有 items，附 `*_count` 计数）/ `skill`（skill 包落盘件）/ `preview`（preview 入口 html 落盘件存在）；
   管理台编辑/查看用，展示端忽略
   （`PUBLIC_ORIGIN` 若非空仍会生成 `{PUBLIC_ORIGIN}{ROOT_PATH}/static/...` 绝对 URL，为 lib-resource 兼容保留）
 - `usage`：**不从 MD frontmatter 派生**（v2 需求：md 里的 usage 值不允许直接使用）——新增恒 0，
@@ -164,13 +172,13 @@ name/desc/author/usage/views/cover/icon/各 URL/parts/file_size/时间等全字�
 - 路由注册顺序保证管理静态路径不被单段路径参数劫持：`GET /operation-logs`（操作记录，
   同 router 内先注册）、`GET /whitelist`（白名单，ds_whitelist router 先 include）
 
-### 2. POST /api/design-systems —— 上传（五部件，全部可选、逐部件独立成败）
+### 2. POST /api/design-systems —— 上传（六部件，全部可选、逐部件独立成败）
 
 **请求**：`multipart/form-data`
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| design_md_file / tokens_file / components_file / patterns_file / skill_file | File? | **五个可选部件**（octo-design-parts/1，要求见「五部件格式」节；单部件 ≤200MB） |
+| design_md_file / tokens_file / components_file / patterns_file / skill_file / preview_file | File? | **六个可选部件**（octo-design-parts/1，要求见「六部件格式」节；单部件 ≤200MB） |
 | name | 必填* | 卡片名称（来源链：表单 → tokens.json.name；**两者皆无 → 400**「名称不能为空」；部件全空也允许——纯壳系统） |
 | desc / author / usage / default | 可选 | 卡片字段；author 为**JSON 数组字符串**（/getAccount 返回的完整值条目）；usage 不读任何文件值（缺省恒 0） |
 | cover_file / icon_file | File? | 可选自定义封面（jpg/png/webp ≤2MB，存 `design-systems/covers/{slug}.{ext}`）与图标（jpg/png/webp/svg ≤2MB，svg 服务端消毒）；不上传 cover 则回落内置名（默认 `cover-cyan.jpg`） |
@@ -201,12 +209,14 @@ spacing / radius / shadow——模板原生渲染，存量系统同构）+ `comp
     "tokens":      { "provided": true, "ok": false, "error": "tokens.json 不是合法 JSON：…" },
     "components":  { "provided": true, "ok": true, "count": 8, "nested": true },
     "patterns":    { "provided": false },
-    "skill":       { "provided": true, "ok": true, "skill_name": "text-to-ui", "size": 1048576 }
+    "skill":       { "provided": true, "ok": true, "skill_name": "text-to-ui", "size": 1048576 },
+    "preview":     { "provided": true, "ok": true, "entry": "index.html", "nested": true, "size": 325742 }
   }
 }
 ```
 
 - `components/patterns.count`：扫描出的叶子 html 数；`nested`：检测到同名嵌套目录并已剥离（提示性）
+- `preview.entry`：入口 html 文件名（preview_url 指向它）、`preview.nested`：检测到单层包裹目录并已剥离（提示性）
 - `skill.skill_name`：SKILL.md frontmatter name；失败部件的 `error` 为可展示的原因描述
 
 ### 3. GET /api/design-systems/{slug}/json —— 详情 JSON
@@ -231,11 +241,12 @@ spacing / radius / shadow——模板原生渲染，存量系统同构）+ `comp
 
 ### 5. PUT /api/design-systems/{slug}/parts —— 部件替换
 
-**请求**：`multipart/form-data`，字段同 2 号的五个部件（`design_md_file` / `tokens_file` /
-`components_file` / `patterns_file` / `skill_file`），**至少提供一个**（缺失 → 400「未提供任何部件文件」）。
+**请求**：`multipart/form-data`，字段同 2 号的六个部件（`design_md_file` / `tokens_file` /
+`components_file` / `patterns_file` / `skill_file` / `preview_file`），**至少提供一个**（缺失 → 400「未提供任何部件文件」）。
 
 **行为**（逐部件独立成败，响应 `ingest` 报告同 2 号）：
 - **只换提供部件的内容**：components/patterns → `assets/{group}` 子树整体替换 + json 区块重建；
+  preview → `preview/` 子树整体替换 + `preview_entry_path` 列更新（未提供部件保留存量入口）；
   tokens → 剔除旧区块（剔除集 = 标准五键 ∪ 旧 tokens 原件顶层键）后合入新转换结果，
   **name/id/cover/meta 不跟随**（管理字段归 PATCH）；skill → 原文件名落盘，新名与旧附件不同时
   按 `skill_zip_path` 列自动清理旧文件；DESIGN.md → `source.md` 覆盖
@@ -544,6 +555,7 @@ is_active（软删）、created_at/updated_at。
    │  ├─ source.md                    design_md 部件落盘件（DESIGN.md 原文，展示端概览数据源）
    │  ├─ tokens.json                  tokens 部件原件（唯一数据源留档；老系统无此文件）
    │  ├─ my-skill-pack.zip            skill 包原样保留（上传原文件名；skill_zip_url 可下载）
+   │  ├─ preview/…                    预览页面包整站落盘（preview_url 指向其入口 html；单层包裹已剥离）
    │  └─ assets/{components,patterns}/…  组件包 / Pattern 包落盘资产（html/css 经 /static 可直接访问；同名嵌套层已剥离）
    ├─ h-design/…                      （存量：design-system.json + source.md 两件，编辑部件时原样兼容）
    └─ zips-era/…                      （旧 zip 直传时代系统：磁盘上可能残留 source.zip 历史文件，v4 起无任何入口引用）

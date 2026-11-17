@@ -24,7 +24,7 @@ import {
 import { userOption } from '../utils/userOption'
 
 /**
- * 三态弹窗：新增 / 编辑 / 查看设计系统（octo-design-parts/1 五部件）
+ * 三态弹窗：新增 / 编辑 / 查看设计系统（octo-design-parts/1 六部件）
  * - create：五个可选部件槽（DESIGN.md / tokens.json / 组件包 zip / Pattern 包 zip / skill 包 zip），
  *   任选子集一次 multipart 提交；逐部件独立成败——失败部件红字汇总提示，其余部件正常入库；
  *   一个部件都不选 = 纯壳系统（仅名称）
@@ -34,7 +34,7 @@ import { userOption } from '../utils/userOption'
  *   （DESIGN.md / tokens.json / skill 包；组件包/Pattern 包为解压子树无原件不提供下载），
  *   底部小字附规范 id / 内容合计 / 更新时间
  *
- * 上传要求（api.md「五部件格式」）：组件包 zip 内必须包含 components/ 目录（components/components/
+ * 上传要求（api.md「六部件格式」）：组件包 zip 内必须包含 components/ 目录（components/components/
  * 同名双层嵌套自动剥离）；Pattern 包同理（patterns/ 目录）；skill 包第一层含 SKILL.md。
  */
 export type FormMode = 'create' | 'edit' | 'view'
@@ -52,8 +52,8 @@ const MAX_IMG_BYTES = 2 * 1024 * 1024
 const ALLOWED_COVER_EXTS = ['jpg', 'jpeg', 'png', 'webp']
 const ALLOWED_ICON_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'svg']
 
-/** 五部件槽定义（label 展示名 / accept / 前端预检扩展名 / 槽位说明） */
-type PartKey = 'design_md' | 'tokens' | 'components' | 'patterns' | 'skill'
+/** 六部件槽定义（label 展示名 / accept / 前端预检扩展名 / 槽位说明） */
+type PartKey = 'design_md' | 'tokens' | 'components' | 'patterns' | 'skill' | 'preview'
 
 interface PartSlot {
   key: PartKey
@@ -99,6 +99,13 @@ const PART_SLOTS: PartSlot[] = [
     exts: ['zip'],
     hint: 'skill 包 zip · 第一层含 SKILL.md（frontmatter name 非空）',
   },
+  {
+    key: 'preview',
+    label: '预览页面',
+    accept: '.zip,application/zip,application/x-zip-compressed',
+    exts: ['zip'],
+    hint: '预览页面包 zip · 含 html 即可（index.html 优先）；上传后展示端详情页直连该页，不走模板页',
+  },
 ]
 
 function validateImageFile(file: File, exts: string[], label: string): string | null {
@@ -129,7 +136,7 @@ const LABEL_WIDTH = 120
 const INPUT_WIDTH = 320
 const ROW_GAP = 20
 
-/** 紧凑拖拽区（可拖可点；提示文字单行省略保证五个框恒定同高，hover title 看全文） */
+/** 紧凑拖拽区（可拖可点；提示文字支持换行，hover title 看全文） */
 function CompactDropzone({
   accept,
   beforeUpload,
@@ -151,7 +158,7 @@ function CompactDropzone({
       }}
       style={{
         width,
-        height: 64,
+        height: 80,
         padding: '8px 12px',
         display: 'flex',
         alignItems: 'center',
@@ -167,9 +174,6 @@ function CompactDropzone({
           lineHeight: 1.4,
           flex: 1,
           minWidth: 0,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
         }}
       >
         {hint}
@@ -241,13 +245,14 @@ export default function DesignSystemFormModal({
   const isCreate = mode === 'create'
   const isEdit = mode === 'edit'
 
-  // 五部件所选文件（create/edit 共用；内容解析在后端，前端只做扩展名/大小预检）
+  // 六部件所选文件（create/edit 共用；内容解析在后端，前端只做扩展名/大小预检）
   const [partFiles, setPartFiles] = useState<Record<PartKey, File | null>>({
     design_md: null,
     tokens: null,
     components: null,
     patterns: null,
     skill: null,
+    preview: null,
   })
   const [partErrors, setPartErrors] = useState<Record<PartKey, string | null>>({
     design_md: null,
@@ -678,6 +683,8 @@ export default function DesignSystemFormModal({
         return parts.patterns ? `已上传（${parts.patterns_count} 个 Pattern）` : '未上传'
       case 'skill':
         return parts.skill ? `已上传（技能名：${item.skill_name ?? '—'}）` : '未上传'
+      case 'preview':
+        return parts.preview ? `已上传（入口：${item.preview_url?.split('/').pop() ?? '—'}）` : '未上传'
     }
     return ''
   }
@@ -715,6 +722,16 @@ export default function DesignSystemFormModal({
         >
           <DownloadOutlined />
           下载
+        </Typography.Link>
+      )
+    }
+    if (key === 'preview' && item.preview_url) {
+      return (
+        <Typography.Link
+          onClick={() => window.open(item.preview_url!, '_blank', 'noopener')}
+          style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+        >
+          打开预览
         </Typography.Link>
       )
     }

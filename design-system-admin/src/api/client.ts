@@ -45,6 +45,7 @@ const PART_FIELD: Record<keyof PartFiles, string> = {
   components: 'components_file',
   patterns: 'patterns_file',
   skill: 'skill_file',
+  preview: 'preview_file',
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {

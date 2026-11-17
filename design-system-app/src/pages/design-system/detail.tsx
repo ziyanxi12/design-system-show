@@ -94,10 +94,11 @@ export default function DesignSystemDetail(props: { id: string; section?: string
     ),
   )
 
-  /* 模板握手：ds-ready 与 meta 双就绪 → 注入数据（jsonUrl 为模板唯一数据源，深链段随行） */
+  /* 模板握手：ds-ready 与 meta 双就绪 → 注入数据（仅模板模式：preview 部件存在时 iframe 直连
+     preview_url 自带数据，不发 ds-data；jsonUrl 为模板唯一数据源，深链段随行） */
   createEffect(() => {
     const m = meta()
-    if (dsReady() && m && iframe?.contentWindow) {
+    if (!m?.previewUrl && dsReady() && m && iframe?.contentWindow) {
       iframe.contentWindow.postMessage({
         type: "ds-data",
         data: { id: props.id, meta: m, deep: props.section || props.item ? { section: props.section, item: props.item } : undefined },
@@ -189,7 +190,8 @@ export default function DesignSystemDetail(props: { id: string; section?: string
               </div>
             </div>
 
-            {/* 模板区：左侧导航 + 右侧 token 数据（json_url） */}
+            {/* 模板区：左侧导航 + 右侧 token 数据 —— 有 preview 部件则 iframe 直连预览页整站（preview_url），
+                否则走模板页（json_url 注入渲染）；preview 页自带数据，壳不发 ds-data */}
             <div class="flex-1 relative" style="min-height:0">
               <Show when={!loaded()}>
                 <div
@@ -201,7 +203,7 @@ export default function DesignSystemDetail(props: { id: string; section?: string
               </Show>
               <iframe
                 ref={iframe}
-                src="./design-systems/detail/template.html"
+                src={m().previewUrl ?? "./design-systems/detail/template.html"}
                 title="设计系统详情"
                 style="width:100%;height:100%;border:0;display:block"
                 onLoad={() => setLoaded(true)}

@@ -43,7 +43,9 @@ export interface DesignSystemItem extends DesignSystemMeta {
   skill_zip_url?: string | null
   /** 技能名（skill 包 zip 第一层 SKILL.md frontmatter 的 name；无 skill 部件为 null） */
   skill_name?: string | null
-  /** 五部件存在性（编辑/查看用；展示端忽略） */
+  /** 预览页面包入口 html 地址（无 preview 部件为 null；展示端检测到即直连该页不走模板） */
+  preview_url?: string | null
+  /** 六部件存在性（编辑/查看用；展示端忽略） */
   parts: DesignSystemParts
   /** 创建人 / 最后编辑人（account）及显示名（"昵称 account"，无用户记录时回落 account） */
   created_by: string
@@ -55,7 +57,7 @@ export interface DesignSystemItem extends DesignSystemMeta {
   updated_at: string
 }
 
-/** 五部件存在性（api1 item.parts） */
+/** 六部件存在性（api1 item.parts） */
 export interface DesignSystemParts {
   /** source.md 落盘件存在 */
   design_md: boolean
@@ -67,19 +69,22 @@ export interface DesignSystemParts {
   patterns: boolean
   /** skill 包落盘件存在 */
   skill: boolean
+  /** preview 入口 html 落盘件存在 */
+  preview: boolean
   components_count: number
   patterns_count: number
 }
 
-export type DesignSystemPartKey = 'design_md' | 'tokens' | 'components' | 'patterns' | 'skill'
+export type DesignSystemPartKey = 'design_md' | 'tokens' | 'components' | 'patterns' | 'skill' | 'preview'
 
-/** 五部件文件集合（create / putParts 入参；全部可选，一个都不选 = 纯壳系统） */
+/** 六部件文件集合（create / putParts 入参；全部可选，一个都不选 = 纯壳系统） */
 export interface PartFiles {
   design_md?: File | null
   tokens?: File | null
   components?: File | null
   patterns?: File | null
   skill?: File | null
+  preview?: File | null
 }
 
 /** POST / PUT parts 响应的逐部件导入报告 */
@@ -92,6 +97,8 @@ export interface PartIngestEntry {
   /** 组件/Pattern 包检测到同名嵌套目录并已剥离 */
   nested?: boolean
   skill_name?: string
+  /** 预览页面包入口 html 文件名（preview_url 指向它） */
+  entry?: string
 }
 
 export type PartIngestReport = Record<DesignSystemPartKey, PartIngestEntry>
