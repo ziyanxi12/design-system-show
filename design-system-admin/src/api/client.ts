@@ -169,6 +169,17 @@ export const api = {
   },
 
   /**
+   * 删除预览页面部件（契约 5a：DELETE /{slug}/parts/preview）：
+   * 删 {slug}/preview/ 整子树，preview_url 置 null、parts.preview=false（幂等——无该部件时照常返回 item）；
+   * 展示端详情页随之回落模板页渲染。仅 preview 部件开放删除。
+   */
+  deletePreviewPart(slug: string): Promise<DesignSystemItem> {
+    return request<DesignSystemItem>(`/api/design-systems/${slug}/parts/preview`, {
+      method: 'DELETE',
+    })
+  },
+
+  /**
    * 编辑卡片 meta；multipart：不上传文件则保留现有封面/图标。
    * authors 为作者数组（JSON 字符串提交，users 表自动补全）；调用量仅 API 修正通道，界面不提供入口。
    */
