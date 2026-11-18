@@ -54,6 +54,28 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // 管理台人员搜索（同源网关路径 getW3UserByAccounts：生产由 nginx /main 网关承载，
+  // dev 经 admin vite proxy /main → 3090 命中此处；协议与 /getAccount 完全同构）
+  if (
+    req.method === "GET" &&
+    url.pathname === "/main/rest.root/workspace/user/getW3UserByAccounts"
+  ) {
+    const token = req.headers["uiplustoken"];
+    if (!token || !String(token).trim()) {
+      send(res, 200, { content: null, errorCode: 401, success: false });
+      return;
+    }
+
+    const keyword = url.searchParams.get("keyword") ?? "";
+    const matched = keyword ? search(keyword) : ACCOUNTS;
+    send(res, 200, {
+      content: { [keyword]: matched },
+      errorCode: 0,
+      success: true,
+    });
+    return;
+  }
+
   // 用户信息查询（USER_INFO_API_URL 协议：?account= 精确查、无鉴权——打点身份完整化用）
   if (req.method === "GET" && url.pathname === "/getUserInfo") {
     const account = url.searchParams.get("account") ?? "";

@@ -3,7 +3,7 @@
  * 请求头与 lib-resource-ui 一致（octo-vs-token + AES 加密的 X-User-Data），
  * BASE 由 VITE_API_BASE 指定（同域 /aaa 反代，dev 经 vite proxy → lib-resource-service）。
  */
-import { ACCOUNT_API_BASE, API_BASE } from '../config'
+import { API_BASE } from '../config'
 import { ApiError } from './errors'
 import { expireLogout, getEncryptedUserData } from '../utils/auth'
 import type {
@@ -297,10 +297,11 @@ export const api = {
     return request<{ detail: string }>(`/api/design-systems/whitelist/${id}`, { method: 'DELETE' })
   },
 
-  // ─────────────── 人员搜索（/getAccount，直连 mock 服务） ───────────────
+  // ─────────────── 人员搜索（同源网关 getW3UserByAccounts） ───────────────
 
   /**
-   * 人员联想搜索（GET /getAccount?keyword=，服务要求 uiplusToken 头）。
+   * 人员联想搜索（GET /main/rest.root/workspace/user/getW3UserByAccounts?keyword=，同源网关：
+   * dev 走 vite proxy /main → mock 3090，生产走 nginx 同网关；携带 uiplusToken 头）。
    * 返回完整人员信息（id/userID/account/nickName/dept），与 AuthorEntry 同构——
    * 作者与白名单新增共用此数据源，选中即得完整值。
    */
@@ -311,7 +312,7 @@ export const api = {
       uiplusToken: localStorage.getItem('uiplusToken') || 'octo-demo',
     }
     const res = await fetch(
-      `${ACCOUNT_API_BASE}/getAccount?keyword=${encodeURIComponent(keyword)}`,
+      `${window.location.origin}/main/rest.root/workspace/user/getW3UserByAccounts?keyword=${encodeURIComponent(keyword)}`,
       { headers, signal },
     )
     if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
