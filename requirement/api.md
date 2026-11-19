@@ -1,8 +1,21 @@
-# 设计系统管理 API 契约（v4.3 · 六部件上传 + 预览部件删除 + skill 名加前缀）
+# 设计系统管理 API 契约（v4.4 · design-system.json 八栏单数据源）
 
 > 前端：`design-system-admin`（管理台 4 栏：设计系统管理 / 人员管理 / 操作记录 / 数据统计）+ `design-system-app`（展示端）
 > 后端：在 `lib-resource-service` 中新增 `routers/design_systems.py` 实现，存储走 `FILE_ROOT_DIR`
 > （本地 `./storage`，生产 `/data/resource`），文件相对路径 `design-systems/{slug}/…`
+>
+> **v4.4 变更**：**design-system.json 重构为八栏单数据源**（模板 template.html 唯一 json，
+> 不再推导读 tokens.json/index.json/spec.json）。结构（8+1 键）：
+> `overview`（概览 md 相对路径，恒 "source.md"）+ `color/typography/spacing/radius/shadow/other`
+> （**从 tokens.json 原件顶层同名键原样深拷贝**，other 供模板 LIVE token 注入；原件缺失的键
+> 沿用老 json 同名键——存量兼容）+ `components/patterns`（`{items:[{id, name, group: 目录
+> 层级数组, height, html: 预览相对路径}]}`，条目由后端扫 assets 生成：spec.json 优先
+> [name + preview.file]，老结构按叶子 html；index.json items 顺序优先）。相对路径均相对
+> json 所在 `{slug}/` 目录解析。**组装方式**：POST/PUT parts 逐部件落盘后从 `{slug}` 落盘
+> 现状**全量重建**（未提供部件的落盘件未动，天然保留存量）；**存量迁移**：启动时全量重建
+> 所有系统 json + file_size 重算。模板删除预览格（v4 组件 html 自带变体切换 + pvHeight
+> 高度上报）与 shortNames 中文名（条目只存组件名）；概览/预览 html 按 json 相对路径 fetch。
+> 顶层不再写 name/meta/coverage/source.files 内嵌源码（管理字段归 DB 列）。
 >
 > **v4.3 变更**：skill 包 ingest 改写 SKILL.md 的 name——2 号 POST / 5 号 PUT parts 上传
 > skill 包时，后端读取 zip 第一层 SKILL.md frontmatter 的 `name`，**非 `design-system-`
@@ -75,13 +88,14 @@
 | `skill_file` | skill 包 .zip | zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），frontmatter `name` 非空；**ingest 改写 name：非 `design-system-` 开头 → `design-system-{name}`（幂等，已带前缀原样）；改写后 SKILL.md 替换进 zip 落盘（原文件名不变）；最终名（含前缀）≤255，超出 → 该部件失败**；文件名不得与系统保留文件（`source.zip`/`source.md`/`design-system.json`/`tokens.json`/`preview`，大小写不敏感）冲突 | `{slug}/{原文件名}`（skill_zip_url，zip 内 SKILL.md 为改写后版本；skill_name = 改写后 name） |
 | `preview_file` | 预览页面包 .zip | **zip 里须含 html 文件**：入口 = 根下 `index.html`（大小写不敏感）；无 `index.html` 时根下**唯一** `.html` 兜底；无 html / 多个 html 且无 index.html → 该部件失败。根无 html 且仅一个目录条目时**单层任意名包裹自动剥离**（右键压缩兼容，循环最多 3 层）；**内容不解析不校验**（整站原样落盘） | `{slug}/preview/**`（preview_url 指向入口 html） |
 
-**服务端处理**：部件独立校验/解析（`app/services/design_system_zip.py`）→ design-system.json =
-tokens 转换区块（convert_tokens_to_legacy，模板原生渲染，存量系统同构）+ components/patterns
-（assets 扫描：目录层级保留在 `group` 字段 + name 前缀；`items[].height` 固定写默认 160——展示端
-表格行预览高度，预留后续修正通道）+ `coverage` 存在性标记。**存储版瘦身**（slim，落盘前统一执行）：
-components 的 `source.files` 只留 html 条目 `{lang, path}`（去内嵌 code 与 css 条目——展示端 iframe
-src 直连 `/static` 资产，只用路径）；patterns 的 `view.cards[].states[*]` 只留 `meta` 路径
-（去内嵌 html）；无 overview 内嵌（展示端概览 fetch `source.md`，即 design_md_url 落盘件）。
+**服务端处理**：部件独立校验/解析（`app/services/design_system_zip.py`）→ 逐部件落盘后
+从 `{slug}` 落盘现状**全量重建** design-system.json（`service.rebuild_design_system_json`，
+v4.4 八栏单数据源——见 v4.4 变更块；未提供部件的落盘件未动，天然保留存量）。条目扫描
+（`scan_group_items`）：**spec.json 优先**（v3/v4 转化产物——目录含 spec.json = 一个条目，
+name = spec.name、html = spec.preview.file，文件须存在；无 preview 不上网站；spec 坏→按老
+结构扫叶子 html）；**无 spec.json 的老 zip 结构**按叶子 html 逐个成条（目录层级 = group）；
+index.json 的 items 顺序优先。`items[].height` 固定写默认 160（展示端 iframe 初始行高，
+v4 html 经 pvHeight 上报自适应）。
 
 **安全校验（部件级失败，不影响其他部件；均回报在响应 `ingest` 里）**：zip slip
 （`..`/绝对路径/反斜杠/symlink/特殊文件类型）、zip bomb（条目数 >5000、解压总量 >500MB、
@@ -203,16 +217,32 @@ name/desc/author/usage/views/cover/icon/各 URL/parts/file_size/时间等全字�
 `{"provided", "ok"}` 与失败原因 / 计数 / 技能名。**请求级 400 仅限**：name 缺失
 （表单与 tokens 皆无）、`cover_file`/`icon_file` 超 2MB / 类型不符。
 
-**design-system.json 结构（v4）**：tokens.json **转换后的老区块结构**（color.groups / typography /
-spacing / radius / shadow——模板原生渲染，存量系统同构）+ `components`/`patterns`（assets 扫描：
-`items[].height` 行高默认 160；存储版不内嵌源码只留路径，见「五部件格式」节瘦身说明）
-+ 多余分组顶层原样保留（fontScale 等，暂不渲染）+ `coverage` 存在性标记。DESIGN.md 原文存
-`source.md`（展示端概览 fetch 该文件后 markdown 渲染，读不到显示「未提取到」）。
+**design-system.json 结构（v4.4，八栏单数据源——模板唯一 json）**：
+
+```json
+{
+  "overview": "source.md",
+  "color": { "title": "...", "groups": [ { "kind": "...", "label": "...", "tokens": [ { "name": "...", "token": "--...", "value": "...", "desc": "..." } ] } ] },
+  "typography": { "title": "...", "families": [ ... ], "groups": [ ... ] },
+  "spacing": { "title": "...", "groups": [ ... ] },
+  "radius": { "title": "...", "groups": [ ... ] },
+  "shadow": { "title": "...", "groups": [ ... ] },
+  "other": { "title": "...", "groups": [ ... ] },
+  "components": { "items": [ { "id": "button", "name": "Button", "group": [ "通用类" ], "height": 160, "html": "assets/components/通用类/Button/按钮-Button.html" } ] },
+  "patterns": { "items": [ { "id": "list-layout", "name": "ListPage", "group": [ "页面模式" ], "height": 160, "html": "assets/patterns/页面模式/ListPage/列表管理页-ListPage.html" } ] }
+}
+```
+
+- 六个 token 键 = tokens.json 原件顶层同名键**原样深拷贝**（结构零校验——octo 老格式也照拷，
+  模板栏级容错）；`other` 供模板 LIVE token 注入（描边等不在八栏里的 token）
+- `overview` = 概览 md 相对路径（恒 `source.md`；文件不存在时模板概览栏容错提示）
+- `components/patterns` 条目 html = 预览相对路径（v4 组件 html 自带变体切换 + pvHeight 高度上报）
+- 相对路径均相对 json 所在 `{slug}/` 目录解析；顶层不再写 name/meta/coverage/source.files
 
 **行为**：slug 后端随机生成（无冲突无 409；同 source_slug 重复上传可共存）；五个部件全部
-未提供时创建**纯壳系统**（json 仅 name + coverage）。写 `design_systems` 表记录与操作日志
-（detail 含部件成败摘要）；`default=true` 时清除其他系统的默认标记；`file_size` = `{slug}` 目录
-落盘内容合计。
+未提供时创建**纯壳系统**（json 仅 overview，六键/条目按落盘现状为空）。写 `design_systems`
+表记录与操作日志（detail 含部件成败摘要）；`default=true` 时清除其他系统的默认标记；
+`file_size` = `{slug}` 目录落盘内容合计。
 
 **响应**：列表 item 结构（`slug` 为新生成的随机 id）+ 顶层 `ingest` 逐部件报告：
 
@@ -260,12 +290,15 @@ spacing / radius / shadow——模板原生渲染，存量系统同构）+ `comp
 `components_file` / `patterns_file` / `skill_file` / `preview_file`），**至少提供一个**（缺失 → 400「未提供任何部件文件」）。
 
 **行为**（逐部件独立成败，响应 `ingest` 报告同 2 号）：
-- **只换提供部件的内容**：components/patterns → `assets/{group}` 子树整体替换 + json 区块重建；
-  preview → `preview/` 子树整体替换 + `preview_entry_path` 列更新（未提供部件保留存量入口）；
-  tokens → 剔除旧区块（剔除集 = 标准五键 ∪ 旧 tokens 原件顶层键）后合入新转换结果，
-  **name/id/cover/meta 不跟随**（管理字段归 PATCH）；skill → 原文件名落盘，新名与旧附件不同时
-  按 `skill_zip_path` 列自动清理旧文件（SKILL.md name 前缀改写同 2 号，见「六部件格式」）；DESIGN.md → `source.md` 覆盖
-- **未提供部件取存量**：老系统无 tokens 原件 → 存量 json 的 token 区块原样保留（编辑兼容）
+- **只换提供部件的内容**（落盘子树/文件整体替换）：components/patterns → `assets/{group}`
+  子树整体替换；preview → `preview/` 子树整体替换 + `preview_entry_path` 列更新（未提供
+  部件保留存量入口）；tokens → `tokens.json` 原件覆盖；skill → 原文件名落盘，新名与旧附件
+  不同时按 `skill_zip_path` 列自动清理旧文件（SKILL.md name 前缀改写同 2 号，见「六部件格式」）；
+  DESIGN.md → `source.md` 覆盖
+- **json 全量重建**（v4.4）：任一部件落盘成功后从 `{slug}` 落盘现状全量重建
+  design-system.json（`rebuild_design_system_json`）——**未提供部件的落盘件未动，天然保留
+  存量**（老系统无 tokens 原件 → 六键沿用老 json 同名键；存量 assets 照扫）；管理字段
+  （name/source_slug 等）在 DB 列，不参与 json
 - **管理字段不受影响**：name/source_slug/作者/封面/图标/调用量/描述/默认标记走 PATCH /{slug}
 - 写操作日志（action = `update_parts`，detail 含部件成败摘要）；`file_size` 重算
 - slug 不存在 → 404；软删系统不可见（404）
@@ -532,6 +565,8 @@ is_active（软删）、created_at/updated_at。
 ## 9. GET /api/design-systems/operation-logs —— 操作记录
 
 设计系统模块操作记录，固定 `target_type IN (design_system, ds_whitelist)`，按 `id` 倒序分页。
+**`operator_account` 为 unknown 的记录不返回**（历史脚本/公开维护通道 7d 无登录态写入的
+unknown 日志，页面不展示；NULL 同样排除）——total/分页按过滤后口径。
 
 **查询参数**：
 

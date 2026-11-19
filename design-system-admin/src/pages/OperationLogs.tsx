@@ -8,6 +8,7 @@ import type { OperationLog } from '../types'
 const ACTION_OPTIONS = [
   { value: 'create', label: 'create' },
   { value: 'update_meta', label: 'update_meta' },
+  { value: 'update_parts', label: 'update_parts' },
   { value: 'update', label: 'update' },
   { value: 'reupload', label: 'reupload' },
   { value: 'delete', label: 'delete' },
@@ -21,6 +22,7 @@ const TARGET_OPTIONS = [
 const ACTION_COLOR: Record<string, string> = {
   create: 'green',
   update_meta: 'blue',
+  update_parts: 'geekblue',
   update: 'blue',
   reupload: 'gold',
   delete: 'red',
