@@ -60,9 +60,9 @@ export type ApiItem = {
 
 export type DsLoadState = "loading" | "ready" | "error"
 
-/** 用户头像服务（W3 黄页真实服务直连；face 入参 = account 去掉第一个字符） */
+/** 用户头像服务（W3 黄页真实服务直连；face 入参 = account 去掉第一个字符；尺寸固定 120） */
 export const faceUrl = (account: string): string =>
-  `https://w3.huawei.com/w3lab/rest/yellowpage/face/${account.slice(1)}`
+  `https://w3.huawei.com/w3lab/rest/yellowpage/face/${account.slice(1)}/120`
 
 /** 作者显示标签（展示端）：昵称优先回落账号；管理台才显示 nickName(account) 完整格式 */
 export const authorLabel = (a: AuthorEntry): string => {
