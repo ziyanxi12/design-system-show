@@ -68,13 +68,13 @@ export default function DesignSystemPage(): JSX.Element {
       <div class="flex-1 overflow-auto" style="background:#fff">
         <style>{`
           .ds-list { padding: 60px 112px 48px; }
-          .dl-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; max-width: 1396px; }
+          .dl-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
           .dl-head h1 { font-size: 28px; line-height: 36px; font-weight: 700; color: #191919; margin: 0; }
           .dl-head p { font-size: 14px; line-height: 22px; color: #777777; margin: 0; }
           .dl-actions { display: flex; align-items: center; gap: 12px; }
           .ds-page-search { height: 32px; width: 220px; border-radius: 999px; background: rgba(0,0,0,0.05); display: flex; align-items: center; gap: 6px; padding: 0 12px; color: rgba(0,0,0,0.6); }
           .ds-page-search input { flex: 1; min-width: 0; font-size: 14px; border: none; outline: none; background: transparent; color: inherit; font-family: inherit; padding: 0; }
-          .dl-grid { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fill, 260px); gap: 24px; max-width: 1420px; }
+          .dl-grid { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fill, 260px); gap: 24px; }
           .ds-card { width: 260px; cursor: pointer; position: relative; background: transparent; border: none; padding: 0; text-align: left; font: inherit; display: block; }
           .ds-card .cover { position: relative; width: 260px; height: 160px; border-radius: 12px; overflow: hidden; background: #E9EEF8; }
           .ds-card .cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s; }
@@ -157,10 +157,12 @@ export default function DesignSystemPage(): JSX.Element {
                         </span>
                       </Show>
                     </span>
+                    {/* 隐藏调用量（前端不展示；后端字段/管理台统计保留）
                     <span class="usage">
                       <UsageIcon />
                       {item.meta.usage ?? 0}
                     </span>
+                    */}
                   </div>
                 </button>
               )}
