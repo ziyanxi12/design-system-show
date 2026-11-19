@@ -91,18 +91,20 @@ export default function DesignSystemList() {
     }
   }
 
-  // 系统级启用/禁用（v4.6）：列表开关即点即生效——PATCH enabled 后用响应原地更新单行
-  // （PATCH 返回完整 item；不再 reload：避免全表 loading 遮罩闪烁 + 二次列表请求 + 23 行全量重渲染）；
-  // 禁用=展示端隐藏（数据全保留），管理台经 include_disabled 恒可见可再启用；失败时 items
-  // 未变更，Switch（checked 由 items 驱动）自动回弹，无需手动还原
+  // 系统级启用/禁用（v4.6）：列表开关乐观更新——点击瞬间翻转样式（开关/置灰/Tag/Tooltip
+  // 全部本地即时变化），PATCH 成功后用响应整体替换该行（其余字段顺带刷新），失败回滚翻转前状态；
+  // 单飞守卫：在途请求期间忽略同一行的重复点击（替代 loading 禁用，视觉零等待）
   const [toggling, setToggling] = useState<string | null>(null)
   const toggleEnabled = async (it: DesignSystemItem, enabled: boolean) => {
+    if (toggling === it.slug) return
     setToggling(it.slug)
+    setItems((prev) => prev.map((x) => (x.slug === it.slug ? { ...x, enabled } : x)))
     try {
       const updated = await api.patchMeta(it.slug, { enabled })
       setItems((prev) => prev.map((x) => (x.slug === updated.slug ? updated : x)))
       message.success(`已${enabled ? '启用' : '禁用'}「${it.name}」${enabled ? '' : '（展示端不再可见，数据保留）'}`)
     } catch (e) {
+      setItems((prev) => prev.map((x) => (x.slug === it.slug ? { ...x, enabled: !enabled } : x)))
       message.error(e instanceof Error ? e.message : String(e))
     } finally {
       setToggling(null)
@@ -185,7 +187,6 @@ export default function DesignSystemList() {
             checked={it.enabled ?? true}
             checkedChildren="启用"
             unCheckedChildren="禁用"
-            loading={toggling === it.slug}
             disabled={!canEdit}
             onChange={(v) => toggleEnabled(it, v)}
           />
