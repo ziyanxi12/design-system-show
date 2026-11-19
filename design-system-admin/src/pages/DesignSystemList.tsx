@@ -6,6 +6,7 @@ import {
   Input,
   Popconfirm,
   Space,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -90,6 +91,24 @@ export default function DesignSystemList() {
     }
   }
 
+  // 系统级启用/禁用（v4.6）：列表开关即点即生效——PATCH enabled 后用响应原地更新单行
+  // （PATCH 返回完整 item；不再 reload：避免全表 loading 遮罩闪烁 + 二次列表请求 + 23 行全量重渲染）；
+  // 禁用=展示端隐藏（数据全保留），管理台经 include_disabled 恒可见可再启用；失败时 items
+  // 未变更，Switch（checked 由 items 驱动）自动回弹，无需手动还原
+  const [toggling, setToggling] = useState<string | null>(null)
+  const toggleEnabled = async (it: DesignSystemItem, enabled: boolean) => {
+    setToggling(it.slug)
+    try {
+      const updated = await api.patchMeta(it.slug, { enabled })
+      setItems((prev) => prev.map((x) => (x.slug === updated.slug ? updated : x)))
+      message.success(`已${enabled ? '启用' : '禁用'}「${it.name}」${enabled ? '' : '（展示端不再可见，数据保留）'}`)
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setToggling(null)
+    }
+  }
+
   const columns: ColumnsType<DesignSystemItem> = [
     {
       title: '封面',
@@ -111,8 +130,12 @@ export default function DesignSystemList() {
       render: (name: string, it) => (
         <Space size={6} direction="vertical" style={{ gap: 0 }}>
           <Space size={6}>
-            <Typography.Text strong>{name}</Typography.Text>
+            {/* 禁用系统名称置灰（数据保留，开关在「状态」列） */}
+            <Typography.Text strong style={it.enabled === false ? { color: '#94a3b8' } : undefined}>
+              {name}
+            </Typography.Text>
             {it.default ? <Tag color="geekblue">默认</Tag> : null}
+            {it.enabled === false && <Tag>已禁用</Tag>}
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{it.slug}</Typography.Text>
         </Space>
@@ -150,6 +173,24 @@ export default function DesignSystemList() {
       key: 'updated_at',
       width: 160,
       render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—'),
+    },
+    {
+      title: '状态',
+      key: 'enabled',
+      width: 90,
+      render: (_, it) => (
+        <Tooltip title={it.enabled === false ? '已禁用：展示端不可见（数据保留）' : '已启用：展示端可见'}>
+          <Switch
+            size="small"
+            checked={it.enabled ?? true}
+            checkedChildren="启用"
+            unCheckedChildren="禁用"
+            loading={toggling === it.slug}
+            disabled={!canEdit}
+            onChange={(v) => toggleEnabled(it, v)}
+          />
+        </Tooltip>
+      ),
     },
     {
       title: '操作',
