@@ -253,9 +253,17 @@ name/desc/author/usage/views/cover/icon/各 URL/parts/file_size/时间等全字�
   "shadow": { "title": "...", "groups": [ ... ] },
   "other": { "title": "...", "groups": [ ... ] },
   "components": { "items": [ { "id": "button", "name": "Button", "group": [ "通用类" ], "height": 160, "html": "assets/components/通用类/Button/按钮-Button.html" } ] },
-  "patterns": { "items": [ { "id": "list-layout", "name": "ListPage", "group": [ "页面模式" ], "height": 160, "html": "assets/patterns/页面模式/ListPage/列表管理页-ListPage.html" } ] }
+  "patterns": { "items": [ { "id": "list-layout", "name": "ListPage", "group": [ "页面模式" ], "height": 160, "html": "assets/patterns/页面模式/ListPage/列表管理页-ListPage.html" } ] },
+  "mapping": { "Button": { "pixso_name": "Button", "pixso_guid": "19:1378", "url": "http://…/design/{fileKey}?item-id=19:1378", "status": "aligned" }, "Divider": { "pixso_name": null, "status": "missing" } },
+  "mappingLibraryName": "H Design 官网设计规范"
 }
 ```
+
+- **mapping / mappingLibraryName（可选键，组件 ↔ Pixso 映射投影）**：`ds_component_mappings` 表的
+  JSON 投影（per-name 字典，key = components.items[].name 一致），由映射写入链路自动注入——
+  PUT /{slug}/mapping 与 POST /{slug}/mapping/sync 落库后、import_parts 重建 json 后，均经
+  inject_mapping 刷新（DB 为唯一可写源，json 键为派生投影）。无映射数据的系统不含这两键
+  （模板组件表保持两列）。模板第三列「关联设计组件」卡片直接读 DS.mapping 渲染，零额外请求。
 
 - 六个 token 键 = tokens.json 原件顶层同名键**原样深拷贝**（结构零校验——octo 老格式也照拷，
   模板栏级容错）；`other` 供模板 LIVE token 注入（描边等不在八栏里的 token）
