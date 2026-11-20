@@ -1007,6 +1007,21 @@ ul { list-style: none; }
 /* 独立版：去掉 Demo 外壳后的少量补充 */
 .ct-row{grid-template-columns:clamp(150px,16vw,240px) minmax(0,1fr)!important}
 .ct-preview .cp-frame{min-height:60px}
+/* 组件 ↔ Pixso 映射第三列：仅在 ct-table-map（有映射数据）时压过上面的两列覆盖 */
+.ct-table-map .ct-row{grid-template-columns:clamp(150px,13vw,240px) minmax(0,1fr) clamp(200px,16vw,280px)!important}
+.ct-table-map .ct-th>div:nth-child(3),.ct-table-map .ct-row>div:nth-child(3){border-left:1px solid var(--border-1)}
+.ct-mapcol{padding:14px 16px;min-width:0}
+/* 「关联设计组件」卡片（按参考稿）：小标题 + 蓝色可点组件名 + 来源 + 预览图 */
+.ct-map-card{font-size:12px}
+.ct-map-cap{font-size:12px;color:var(--text-3);margin-bottom:6px}
+.ct-map-link{display:inline-block;font-size:17px;line-height:24px;font-weight:600;color:var(--brand);text-decoration:none;margin-bottom:2px}
+a.ct-map-link:hover{text-decoration:underline}
+.ct-map-src{font-size:12px;color:var(--text-3);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct-map-preview{width:100%;height:auto;border-radius:8px;display:block;background:#F5F6F8}
+.ct-map.none{font-size:12px}
+.ct-map-h{display:flex;align-items:center;gap:8px;font-size:13px}
+.ct-map-h b{min-width:0;overflow-wrap:anywhere;font-weight:500;color:var(--text-3)}
+.ct-map-note{color:var(--text-3);line-height:18px;margin-top:2px}
 .unsaid{color:var(--text-3)}
 .dsd-meta .src{color:var(--text-secondary)}
 .overview-markdown h2{margin:28px 0 12px;font-size:20px;line-height:1.5}
@@ -1083,7 +1098,15 @@ let D;
   bad:{components:cp.v?cp.v.bad:[],patterns:pt.v?pt.v.bad:[]},err:{tokens:tk.e&&tk.e.message,design:dm.e&&dm.e.message,components:cp.e&&cp.e.message,patterns:pt.e&&pt.e.message}};
  else{const e=tk.e;const file=location.protocol==="file:";
  $("#app").innerHTML=`<div class="ds-fail"><b>${file?"请双击「预览.command」打开本网站":"数据读取失败"}<\/b><p>${file?"直接双击 index.html 打开时，浏览器不允许页面读取本地的 data 文件夹。请双击同目录下的 <code>预览.command<\/code>，它会在本机启动预览并自动打开浏览器。":esc(e.message)}<\/p><\/div>`;return}}
-const T=D.tokens;
+ const T=D.tokens;
+
+/* ---- 组件 ↔ Pixso 映射（DB 表经 GET /{slug}/mapping；宿主模式才有，404/空/异常 → null 保持两列） ---- */
+let MAPPING=null,LIB_NAME="";
+if(SLUG){try{const r=await fetch(`/api/design-systems/${SLUG}/mapping`,{cache:"no-store"});
+ if(r.ok){const m=await r.json();if(m&&m.count>0){const o={};m.items.forEach(it=>o[it.component_name]=it);MAPPING=o}}
+ /* 来源库名（组件库全局信息，静态约定文件） */
+ const lr=await fetch(`/static/design-systems/pixso-thumbs/library.json`,{cache:"no-store"});
+ if(lr.ok){const lj=await lr.json();LIB_NAME=lj&&lj.libraryName||""}}catch(e){}}
 
 /* ---- 组件预览里的 Token 变量：按 token.json 生成并注入每个预览 iframe，改 token.json 后预览同步变化 ---- */
 const LIVE=(()=>{const v=new Map(),put=(n,x,force)=>{if(!n||x==null||x==="")return;n=n.startsWith("--")?n:"--"+n;if(force||!v.has(n))v.set(n,x)};
@@ -1146,9 +1169,23 @@ const groupsOf=list=>[...new Set(list.map(x=>x.group))].map(g=>({g,items:list.fi
 /* 源规范没给分类时 spec.group 为空（目录直接是 <英文名>/），网站上不显示分类这一层 */
 const isFlat=list=>list.length>0&&list.every(x=>!x.group);
 const nameHtml=x=>`<span class="component-name-cn">${esc(x.zh)}<\/span><span class="component-name-en">${esc(x.name)}<\/span>`;
+/* 映射第三格：按参考稿「关联设计组件」卡片——小标题/蓝色可点组件名/来源行/预览图；未关联 → 灰卡 */
+const THUMB_BASE="/static/design-systems/pixso-thumbs";
+const mapThumb=(guid,suffix)=>guid?`${THUMB_BASE}/${String(guid).replace(/:/g,"-")}${suffix||""}.png`:"";
+function mapColHtml(x){const m=MAPPING&&MAPPING[x.name];if(!m)return"";
+ if(!m.pixso_name)return `<div class="ct-map none"><div class="ct-map-h"><b>未关联 Pixso 组件<\/b><\/div><div class="ct-map-note">关联后可在生成设计稿时使用对应组件实例<\/div><\/div>`;
+ const name=m.pixso_name;
+ const nameHtml=m.url?`<a class="ct-map-link" href="${esc(m.url)}" target="_blank" rel="noopener" title="在 Pixso 中打开">${esc(name)}<\/a>`:`<span class="ct-map-link">${esc(name)}<\/span>`;
+ return `<div class="ct-map-card">`+
+  `<div class="ct-map-cap">关联设计组件<\/div>`+
+  nameHtml+
+  `<div class="ct-map-src">${esc(LIB_NAME||"")}<\/div>`+
+  (m.pixso_guid?`<img class="ct-map-preview" src="${esc(mapThumb(m.pixso_guid,"-preview"))}" alt="${esc(name)}" loading="lazy" onerror="this.onerror=null;this.src='${esc(mapThumb(m.pixso_guid))}'">`:"")+
+  `<\/div>`}
 function rList(key,title,list,descText){return box=>{
- box.innerHTML=shell(key,title,descText,key==="components"?`<label class="dl-search">${icon("search")}<input placeholder="搜索组件名称" data-cq><\/label>`:"")+groupsOf(list).map(({g,items})=>`<div class="as-cat ct-cat" data-cgrp="${esc(g)}">${isFlat(list)?"":`<button type="button" class="as-cat-h ct-group-toggle" aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button>`}<div class="ct-table"><div class="ct-row ct-th"><div>名称<\/div><div>预览<\/div><\/div>${items.map(x=>`<div class="ct-row cp-block" id="${key}-${esc(x.slug)}" data-q="${esc((x.zh+" "+x.name).toLowerCase())}"><div class="ct-name"><div class="nm">${nameHtml(x)}<\/div><\/div><div class="ct-preview">${x.matrix?`<div class="pvx" data-pvx="${esc(x.matrix)}"><div class="pvx-stage"><iframe class="cp-frame" title="${esc(x.zh)}" loading="lazy"><\/iframe><\/div><div class="pvx-zone pvx-v"><\/div><div class="pvx-zone pvx-s"><\/div><\/div>`:x.preview?`<iframe class="cp-frame" src="${esc(x.preview)}" title="${esc(x.zh)}" loading="lazy"><\/iframe>`:`<div class="ct-empty">暂无预览：本次未生成，原因见转化报告<\/div>`}<\/div><\/div>`).join("")}<\/div><\/div>`).join("");
- box.addEventListener("click",e=>{const t=e.target.closest(".ct-group-toggle");if(!t)return;const o=t.getAttribute("aria-expanded")==="true";t.setAttribute("aria-expanded",String(!o));t.nextElementSibling.hidden=o});
+ const hasMap=key==="components"&&!!MAPPING;
+ box.innerHTML=shell(key,title,descText,key==="components"?`<label class="dl-search">${icon("search")}<input placeholder="搜索组件名称" data-cq><\/label>`:"")+groupsOf(list).map(({g,items})=>`<div class="as-cat ct-cat" data-cgrp="${esc(g)}">${isFlat(list)?"":`<button type="button" class="as-cat-h ct-group-toggle" aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button>`}<div class="ct-table ${hasMap?"ct-table-map":""}"><div class="ct-row ct-th"><div>名称<\/div><div>预览<\/div>${hasMap?"<div>映射的 Pixso 组件<\/div>":""}<\/div>${items.map(x=>`<div class="ct-row cp-block" id="${key}-${esc(x.slug)}" data-q="${esc((x.zh+" "+x.name+(MAPPING&&MAPPING[x.name]&&MAPPING[x.name].pixso_name?" "+MAPPING[x.name].pixso_name:"")).toLowerCase())}"><div class="ct-name"><div class="nm">${nameHtml(x)}<\/div><\/div><div class="ct-preview">${x.matrix?`<div class="pvx" data-pvx="${esc(x.matrix)}"><div class="pvx-stage"><iframe class="cp-frame" title="${esc(x.zh)}" loading="lazy"><\/iframe><\/div><div class="pvx-zone pvx-v"><\/div><div class="pvx-zone pvx-s"><\/div><\/div>`:x.preview?`<iframe class="cp-frame" src="${esc(x.preview)}" title="${esc(x.zh)}" loading="lazy"><\/iframe>`:`<div class="ct-empty">暂无预览：本次未生成，原因见转化报告<\/div>`}<\/div>${hasMap?`<div class="ct-mapcol">${mapColHtml(x)}<\/div>`:""}<\/div>`).join("")}<\/div><\/div>`).join("");
+ box.addEventListener("click",e=>{const t=e.target.closest(".ct-group-toggle");if(!t){const mb=e.target.closest("[data-map-open]");if(mb)window.open(mb.dataset.mapOpen,"_blank","noopener")}else{const o=t.getAttribute("aria-expanded")==="true";t.setAttribute("aria-expanded",String(!o));t.nextElementSibling.hidden=o}});
  const q=$("[data-cq]",box);if(q)q.oninput=()=>{const v=q.value.trim().toLowerCase();$$(".cp-block",box).forEach(r=>r.hidden=!!v&&!r.dataset.q.includes(v));$$("[data-cgrp]",box).forEach(c=>c.hidden=!$(".cp-block:not([hidden])",c))}}}
 /* 预览格：上方预览，下方依次是变体、状态。数据来自每个组件的 preview.json（转化 skill 的 s5_preview 生成）。
    没有变体或状态时显示「默认」；选中用法示例时状态栏变灰；切到源规范没有的组合时，自动换成改动最少的已有组合。 */
@@ -1177,7 +1214,7 @@ addEventListener("message",e=>{const h=e.data&&e.data.pvHeight;if(!h)return;$$("
 
 const pHid=()=>D.hiddenPats?`另有 ${D.hiddenPats} 个没有生成预览，不在这里展示，原因见转化报告。`:"";
 const R={overview:rOverview,color:rColor,typography:rType,spacing:rScale("spacing","间距"),radius:rScale("radius","圆角"),shadow:rShadow,
- components:rList("components","组件",D.components,(isFlat(D.components)?`${D.components.length} 个组件；源规范没有给组件分类，按英文名排列。`:`${D.components.length} 个组件，按源规范的 ${D.groups.length} 个分类排列。`)+(D.hiddenComps?`另有 ${D.hiddenComps} 个组件没有生成预览，不在这里展示，原因见转化报告。`:"")),
+ components:rList("components","组件",D.components,((isFlat(D.components)?`${D.components.length} 个组件；源规范没有给组件分类，按英文名排列。`:`${D.components.length} 个组件，按源规范的 ${D.groups.length} 个分类排列。`)+(D.hiddenComps?`另有 ${D.hiddenComps} 个组件没有生成预览，不在这里展示，原因见转化报告。`:""))),
  patterns:D.patterns.length?rList("patterns","Pattern",D.patterns,(isFlat(D.patterns)?`${D.patterns.length} 个页面模式；源规范没有给 Pattern 分类。${pHid()}`:`${D.patterns.length} 个页面模式，按源规范的 ${new Set(D.patterns.map(x=>x.group)).size} 个分类排列。${pHid()}`)):box=>{box.innerHTML=shell("patterns","Pattern",D.hiddenPats?`<span class="unsaid">源规范有 ${D.hiddenPats} 个 Pattern，但本次都没有生成预览，原因见转化报告。<\/span>`:`<span class="unsaid">源规范没有提供 Pattern（页面模式），本栏为空。<\/span>`)}};
 
 /* 外壳：Demo 详情页（头部 + 左侧导航 + 连续滚动的栏目卡片） */
@@ -1215,12 +1252,14 @@ const h=location.hash.slice(1);go(SECTIONS.some(s=>s[0]===h)?h:"overview",false)
 
 /* ---- boot：宿主模式（iframe 内嵌展示端）ds-ready 握手后等 ds-data 注入 jsonUrl，按其目录推导数据位置；
         独立模式（直接打开 / 预览.command）回退同目录 data/。 ---- */
+let SLUG=null;
 if(window.parent!==window){
  window.parent.postMessage({type:"ds-ready"},"*");
  let booted=false;
  window.addEventListener("message",e=>{
   const d=e.data;if(booted||!d||d.type!=="ds-data")return;
   const meta=(d.data||{}).meta||{};
+  SLUG=(d.data||{}).id||null;
   if(!meta.jsonUrl){$("#app").innerHTML='<div class="ds-fail"><b>缺少数据源 jsonUrl</b><p>本页需由设计系统展示端打开（数据由展示端经 api1 的 json_url 注入），请从展示端列表进入。</p></div>';return}
   const p=hostPaths(meta.jsonUrl);
   if(!p){$("#app").innerHTML='<div class="ds-fail"><b>数据源地址无法解析</b><p>jsonUrl：'+esc(meta.jsonUrl)+'</p></div>';return}

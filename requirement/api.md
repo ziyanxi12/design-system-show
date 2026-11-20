@@ -223,6 +223,78 @@ spacing / radius / shadow——模板原生渲染，存量系统同构）+ `comp
 
 返回原始 design-system.json（`FileResponse`）。等价于静态路径 `/static/design-systems/{slug}/design-system.json`，展示端 template.html 直接 fetch 后者。
 
+### 3b. 组件 ↔ Pixso 映射（ds_component_mappings 表）
+
+一行 = 一个 HTML 组件到 Pixso 组件集的映射。HTML 侧字段（slug/component_name/html_zh/html_group）
+由**组件清单同步**写入（组件包 ingest 成功后 import_parts 自动挂钩 + 3c 手动补）；
+Pixso 侧字段（pixso_name/pixso_guid/file_key/…/instance_spec/instance_code）由**匹配脚本批量回填**
+（阶段 2，格式定稿后启用批量写入端点——本契约暂只含读取与同步）。
+
+**表结构**（create_all 自动建）：
+
+| 列 | 说明 |
+|---|---|
+| slug + component_name | UNIQUE 联合；component_name = spec.json 的 name（join 键） |
+| html_zh / html_group | 组件中文名（index.json shortNames）/ 分组（路径首段，无目录为空） |
+| pixso_name / pixso_guid | Pixso 组件集名 / 组件集 node_id（实例创建主锚点） |
+| file_key / page_id / page_name / pixso_category | Pixso 文件与页面定位信息 |
+| component_content_key | Pixso 组件 40 位内容 hash（变更检测：设计侧改组件 → hash 变 → 映射可能过期） |
+| match_type | exact / fuzzy / manual（manual 重跑匹配不覆盖） |
+| url | Pixso 跳转链接；空则渲染端不显示跳转按钮 |
+| instance_spec | 实例参数 JSON（defaults + bridges 轴值映射）——runner 翻译 HTML 轴值后在组件集 children 匹配变体创建实例 |
+| instance_code | 参数化调用表达式（组合组件逃生通道；白名单函数 + JSON 字面量） |
+| status | aligned（已对齐）/ partial（部分对齐）/ missing（未关联，HTML 入库默认值） |
+
+### 3b-1. GET /api/design-systems/{slug}/mapping —— 映射整表读取（公开）
+
+展示端模板第三列消费（鉴权豁免：两段路径 GET 放行）。**响应**：
+
+```json
+{
+  "slug": "bkvvy9vm",
+  "count": 22,
+  "items": [
+    { "component_name": "Button", "html_zh": "按钮", "html_group": "通用",
+      "pixso_name": null, "pixso_guid": null, "pixso_category": null, "file_key": null,
+      "match_type": null, "url": null, "status": "missing",
+      "instance_spec": null, "instance_code": null }
+  ]
+}
+```
+
+- slug 不存在 → 404；无行（未 sync 的存量系统 / 无组件包系统）→ `count: 0, items: []`（展示端据此保持两列）
+
+### 3b-2. POST /api/design-systems/{slug}/mapping/sync —— HTML 组件清单同步（需登录态）
+
+存量系统一次性补数据用（新系统组件包上传已自动挂钩）。数据源 = `{slug}/assets/components/index.json`
+（组件包落盘清单），**全量同步语义**：
+
+- 新组件 → 插入行（status=missing，Pixso 字段全 NULL）
+- 已有行 → **只更新 html_zh / html_group**（Pixso 数据与 status 恒不触碰——保护匹配成果）
+- 清单里已不存在的组件 → 行删除（组件没了映射无意义）
+- 无组件包 → `skipped: true`（不报错，现存行不动）
+
+**响应**：`{"slug": "…", "added": 2, "updated": 0, "removed": 0, "total": 24, "skipped": false}`；幂等可重复执行。
+
+### 3b-3. PUT /api/design-systems/{slug}/mapping —— 匹配结果批量回填（需登录态）
+
+匹配脚本（`scripts/pixso-mapping/match-mapping.mjs`）调用：按 component_name merge 更新已有行的 **Pixso 侧字段**。
+
+**请求**：`Content-Type: application/json`
+
+```json
+{ "items": [ { "component_name": "Button", "pixso_name": "Button", "pixso_guid": "19:1378",
+    "pixso_category": "操作类", "file_key": "8mM_…", "match_type": "exact", "status": "aligned", "url": "" } ] }
+```
+
+- 可写字段：pixso_name / pixso_guid / file_key / page_id / page_name / pixso_category /
+  component_content_key / match_type / status / url / instance_spec（dict 自动转存 JSON 字符串）/ instance_code；
+  **未提供的字段不动**（merge 而非整体替换）
+- **manual 保护**：存量行 `match_type == "manual"` 一律不覆盖（人工修正成果，重跑匹配只跳过）
+- component_name 不在表中 → 400（提示先 POST /{slug}/mapping/sync 同步组件清单）
+
+**响应**：`{"slug": "…", "total": 51, "updated": 50, "skipped_manual": 1, "aligned": 11, "partial": 1, "missing": 39}`
+
 ### 4. PATCH /api/design-systems/{slug} —— 编辑卡片 meta
 
 **请求**：`multipart/form-data`
