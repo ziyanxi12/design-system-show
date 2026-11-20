@@ -3,7 +3,7 @@
  * 请求头与 lib-resource-ui 一致（octo-vs-token + AES 加密的 X-User-Data），
  * BASE 由 VITE_API_BASE 指定（同域 /aaa 反代，dev 经 vite proxy → lib-resource-service）。
  */
-import { ACCOUNT_API_BASE, API_BASE } from '../config'
+import { API_BASE } from '../config'
 import { ApiError } from './errors'
 import { expireLogout, getEncryptedUserData } from '../utils/auth'
 import type {
@@ -28,10 +28,10 @@ import type {
 
 const VS_TOKEN = 'octo_vs_7e91e862389139bab49247ba2550f366'
 
-/** 统计接口查询串（跳过空参数） */
-function statsQs(params: Record<string, string | undefined>): string {
+/** 统计接口查询串（跳过空参数；number 直接字符串化——v4.6 人员统计分页 page/limit 用） */
+function statsQs(params: Record<string, string | number | undefined>): string {
   const usp = new URLSearchParams()
-  Object.entries(params).forEach(([k, v]) => { if (v) usp.set(k, v) })
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') usp.set(k, String(v)) })
   return usp.toString()
 }
 
@@ -118,9 +118,14 @@ function logIngest(ingest: DesignSystemCreateResp['ingest'] | undefined) {
 }
 
 export const api = {
-  /** api1：设计系统列表（含个数）；search 命中 name/slug/author */
+  /** api1：设计系统列表（含个数）；search 命中 name/slug/author。
+   *  v4.6：恒传 include_disabled=1——管理台必须能看到禁用系统（再启用的唯一入口）；
+   *  展示端不带该参数（默认过滤禁用）。 */
   list(search?: string): Promise<DesignSystemListResp> {
-    const q = search && search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''
+    const usp = new URLSearchParams()
+    if (search && search.trim()) usp.set('search', search.trim())
+    usp.set('include_disabled', '1')
+    const q = usp.toString() ? `?${usp.toString()}` : ''
     return request<DesignSystemListResp>(`/api/design-systems${q}`)
   },
 
@@ -171,6 +176,8 @@ export const api = {
   /**
    * 编辑卡片 meta；multipart：不上传文件则保留现有封面/图标。
    * authors 为作者数组（JSON 字符串提交，users 表自动补全）；调用量仅 API 修正通道，界面不提供入口。
+   * preview_enabled（v4.5）：预览页面启用/禁用开关——false 禁用（文件保留、preview_url null、
+   * 展示端回落模板渲染），true 启用恢复直连；无 preview 部件时无效果。
    */
   patchMeta(
     slug: string,
@@ -186,6 +193,8 @@ export const api = {
       fd.append('author', JSON.stringify(options.authors))
     }
     if (patch.default !== undefined) fd.append('default', String(patch.default))
+    if (patch.preview_enabled !== undefined) fd.append('preview_enabled', String(patch.preview_enabled))
+    if (patch.enabled !== undefined) fd.append('enabled', String(patch.enabled))
     if (options?.coverFile) fd.append('cover_file', options.coverFile)
     if (options?.iconFile) fd.append('icon_file', options.iconFile)
     return request<DesignSystemItem>(`/api/design-systems/${slug}`, { method: 'PATCH', body: fd })
@@ -227,8 +236,8 @@ export const api = {
     return request<StatsDeptShareResp>(`/api/design-systems/stats/dept-share?${statsQs({ metric, ...rest })}`)
   },
 
-  /** 人员统计表（9 列） */
-  getStatsUsers(params: { start?: string; end?: string; search?: string }): Promise<StatsUsersResp> {
+  /** 人员统计表（9 列；v4.6 服务端分页：page/limit → 当前页切片，total=全量人数） */
+  getStatsUsers(params: { start?: string; end?: string; search?: string; page?: number; limit?: number }): Promise<StatsUsersResp> {
     return request<StatsUsersResp>(`/api/design-systems/stats/users?${statsQs(params)}`)
   },
 
@@ -286,10 +295,11 @@ export const api = {
     return request<{ detail: string }>(`/api/design-systems/whitelist/${id}`, { method: 'DELETE' })
   },
 
-  // ─────────────── 人员搜索（/getAccount，直连 mock 服务） ───────────────
+  // ─────────────── 人员搜索（同源网关 getW3UserByAccounts） ───────────────
 
   /**
-   * 人员联想搜索（GET /getAccount?keyword=，服务要求 uiplusToken 头）。
+   * 人员联想搜索（GET /main/rest.root/workspace/user/getW3UserByAccounts?keyword=，同源网关：
+   * dev 走 vite proxy /main → mock 3090，生产走 nginx 同网关；携带 uiplusToken 头）。
    * 返回完整人员信息（id/userID/account/nickName/dept），与 AuthorEntry 同构——
    * 作者与白名单新增共用此数据源，选中即得完整值。
    */
@@ -300,7 +310,7 @@ export const api = {
       uiplusToken: localStorage.getItem('uiplusToken') || 'octo-demo',
     }
     const res = await fetch(
-      `${ACCOUNT_API_BASE}/getAccount?keyword=${encodeURIComponent(keyword)}`,
+      `${window.location.origin}/main/rest.root/workspace/user/getW3UserByAccounts?keyword=${encodeURIComponent(keyword)}`,
       { headers, signal },
     )
     if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)

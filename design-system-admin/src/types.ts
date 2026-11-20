@@ -6,6 +6,10 @@ export interface DesignSystemMeta {
   usage?: number
   cover?: string
   default?: boolean
+  /** 预览页面启用开关（v4.5 PATCH 通道：true 启用直连 / false 禁用回落模板渲染，文件不删） */
+  preview_enabled?: boolean
+  /** 系统级启用开关（v4.6 PATCH 通道：true 启用展示 / false 禁用隐藏，数据保留） */
+  enabled?: boolean
 }
 
 /** 作者条目（API 的 author 数组元素；为 /getAccount 返回的完整值，驼峰原样存储） */
@@ -43,8 +47,12 @@ export interface DesignSystemItem extends DesignSystemMeta {
   skill_zip_url?: string | null
   /** 技能名（skill 包 zip 第一层 SKILL.md frontmatter 的 name；无 skill 部件为 null） */
   skill_name?: string | null
-  /** 预览页面包入口 html 地址（无 preview 部件为 null；展示端检测到即直连该页不走模板） */
+  /** 预览页面包入口 html 地址（无 preview 部件或已禁用为 null；展示端检测到即直连该页不走模板） */
   preview_url?: string | null
+  /** 预览页面启用状态（v4.5：false=禁用——文件保留、preview_url null、展示端回落模板；true=启用直连） */
+  preview_enabled?: boolean
+  /** 系统级启用状态（v4.6：false=禁用——数据保留，展示端列表过滤/详情 404；true=启用展示） */
+  enabled?: boolean
   /** 六部件存在性（编辑/查看用；展示端忽略） */
   parts: DesignSystemParts
   /** 创建人 / 最后编辑人（account）及显示名（"昵称 account"，无用户记录时回落 account） */
@@ -216,6 +224,9 @@ export interface StatsUserItem {
 export interface StatsUsersResp {
   start: string | null
   end: string | null
+  /** 全量人数（服务端分页：聚合按全量计算，items 为当前页切片） */
   total: number
+  page: number
+  limit: number
   items: StatsUserItem[]
 }

@@ -15,6 +15,11 @@ GET `/getAccount?keyword=200311`
   - 缺 token：`{"content":null,"errorCode":401,"success":false}`（HTTP 200）
 - mock 数据在 data.js（10 条，account 均为「一个字母 + 数字」格式），改后重启生效
 
+GET `/main/rest.root/workspace/user/getW3UserByAccounts?keyword=200311`
+
+- 管理台人员搜索的**同源网关路径**（client.ts 以 `window.location.origin` 拼接）：生产由 nginx `/main` 网关承载真实 W3 服务，dev 经 admin vite proxy `/main` → 3090 命中本路由——与生产同款 URL 保真
+- 入参 / 出参 / 数据源与 `/getAccount` **完全同构**（含 uiplusToken 必填、content 按 keyword 回显）
+
 GET `/getUserInfo?account=h20031134`
 
 - 入参：query `account`（精确匹配，无鉴权——服务端直连协议）

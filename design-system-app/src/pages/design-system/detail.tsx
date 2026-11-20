@@ -183,9 +183,11 @@ export default function DesignSystemDetail(props: { id: string; section?: string
                     </span>
                     <span>{(m().authors ?? []).map(authorLabel).filter(Boolean).join("、") || "Octo Agent"}</span>
                     <span class="bar"></span>
+                    {/* 隐藏调用量（前端不展示；后端字段/管理台统计保留）
                     <span class="usage-ic" innerHTML={USAGE_ICON} />
                     <span>调用量 {m().usage ?? 0}</span>
                     <span class="bar"></span>
+                    */}
                     <span class="usage-ic" innerHTML={VIEWS_ICON} />
                     <span>预览量 {m().views ?? 0}</span>
                   </div>

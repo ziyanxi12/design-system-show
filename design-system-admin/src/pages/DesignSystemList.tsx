@@ -6,6 +6,7 @@ import {
   Input,
   Popconfirm,
   Space,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -90,6 +91,26 @@ export default function DesignSystemList() {
     }
   }
 
+  // 系统级启用/禁用（v4.6）：列表开关乐观更新——点击瞬间翻转样式（开关/置灰/Tag/Tooltip
+  // 全部本地即时变化），PATCH 成功后用响应整体替换该行（其余字段顺带刷新），失败回滚翻转前状态；
+  // 单飞守卫：在途请求期间忽略同一行的重复点击（替代 loading 禁用，视觉零等待）
+  const [toggling, setToggling] = useState<string | null>(null)
+  const toggleEnabled = async (it: DesignSystemItem, enabled: boolean) => {
+    if (toggling === it.slug) return
+    setToggling(it.slug)
+    setItems((prev) => prev.map((x) => (x.slug === it.slug ? { ...x, enabled } : x)))
+    try {
+      const updated = await api.patchMeta(it.slug, { enabled })
+      setItems((prev) => prev.map((x) => (x.slug === updated.slug ? updated : x)))
+      message.success(`已${enabled ? '启用' : '禁用'}「${it.name}」${enabled ? '' : '（展示端不再可见，数据保留）'}`)
+    } catch (e) {
+      setItems((prev) => prev.map((x) => (x.slug === it.slug ? { ...x, enabled: !enabled } : x)))
+      message.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setToggling(null)
+    }
+  }
+
   const columns: ColumnsType<DesignSystemItem> = [
     {
       title: '封面',
@@ -111,8 +132,12 @@ export default function DesignSystemList() {
       render: (name: string, it) => (
         <Space size={6} direction="vertical" style={{ gap: 0 }}>
           <Space size={6}>
-            <Typography.Text strong>{name}</Typography.Text>
+            {/* 禁用系统名称置灰（数据保留，开关在「状态」列） */}
+            <Typography.Text strong style={it.enabled === false ? { color: '#94a3b8' } : undefined}>
+              {name}
+            </Typography.Text>
             {it.default ? <Tag color="geekblue">默认</Tag> : null}
+            {it.enabled === false && <Tag>已禁用</Tag>}
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{it.slug}</Typography.Text>
         </Space>
@@ -150,6 +175,23 @@ export default function DesignSystemList() {
       key: 'updated_at',
       width: 160,
       render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—'),
+    },
+    {
+      title: '状态',
+      key: 'enabled',
+      width: 90,
+      render: (_, it) => (
+        <Tooltip title={it.enabled === false ? '已禁用：展示端不可见（数据保留）' : '已启用：展示端可见'}>
+          <Switch
+            size="small"
+            checked={it.enabled ?? true}
+            checkedChildren="启用"
+            unCheckedChildren="禁用"
+            disabled={!canEdit}
+            onChange={(v) => toggleEnabled(it, v)}
+          />
+        </Tooltip>
+      ),
     },
     {
       title: '操作',

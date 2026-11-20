@@ -5,6 +5,10 @@
  * - 左表：统计范围（日期，全局生效）+ 名称搜索；6 列；首行汇总；预览数/调用量/使用人数可排序
  * - 打点分布：指标切换（预览数/调用量/引用人数）联动 条形图（天/周/月 × 一层部门堆叠）与扇形图（一层部门占比）
  * - 人员统计：9 列（工号/名字/最近调用时间/预览数/调用量/一~四层部门）+ Excel 下载（前端 xlsx 生成）
+ *   —— v4.6 服务端分页（page/limit → 当前页切片，total=全量人数）；pageSize 可切换 10/20/50，
+ *      行数超高时表体内滚（分页器恒可见）；导出循环拉全部分页后生成
+ * - 整页无滚动条：根容器固定视口高度（calc(100vh - 48px)，Content padding 24×2、无 Header）
+ *   + overflow hidden——左表与人员表各自内部滚动，任何内容长度都不撑出页面级滚动条
  */
 import { memo, useEffect, useMemo, useState } from 'react'
 import {
@@ -204,7 +208,15 @@ export default function StatsPage() {
   const [summary, setSummary] = useState<{ total: StatsSummaryItem; items: StatsSummaryItem[] } | null>(null)
   const [trend, setTrend] = useState<StatsTrendResp['buckets']>([])
   const [deptShare, setDeptShare] = useState<StatsDeptShareResp['items']>([])
+
+  /* 人员统计（v4.6 服务端分页）：当前页数据 + 全量人数；独立于图表组拉取——
+     指标/粒度切换不重拉人员表，仅随范围/页码/每页条数联动 */
   const [users, setUsers] = useState<StatsUserItem[]>([])
+  const [usersTotal, setUsersTotal] = useState(0)
+  const [usersPage, setUsersPage] = useState(1)
+  const [usersLimit, setUsersLimit] = useState(20)
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -224,6 +236,7 @@ export default function StatsPage() {
     return [...set].sort()
   }, [trend, deptShare])
 
+  /* 图表组：summary / trend / deptShare（随范围/搜索/指标/粒度联动；与人员表拉取分离） */
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -231,9 +244,8 @@ export default function StatsPage() {
       api.getStatsSummary({ ...rangeParams, search: debouncedSearch }),
       api.getStatsTrend({ metric, granularity, ...rangeParams }),
       api.getStatsDeptShare({ metric, ...rangeParams }),
-      api.getStatsUsers({ ...rangeParams }),
     ])
-      .then(([s, t, d, u]) => {
+      .then(([s, t, d]) => {
         if (cancelled) return
         setSummary({
           total: { slug: '', name: '汇总', views: s.total.views, usage: s.total.usage, users: s.total.users, last_at: s.total.last_at },
@@ -241,12 +253,26 @@ export default function StatsPage() {
         })
         setTrend(t.buckets)
         setDeptShare(d.items)
-        setUsers(u.items)
       })
       .catch((e) => { if (!cancelled) void message.error(String(e?.message ?? e)) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [rangeParams, debouncedSearch, metric, granularity])
+
+  /* 人员统计组：服务端分页拉取（随范围/页码/每页条数联动；指标/粒度切换不触发） */
+  useEffect(() => {
+    let cancelled = false
+    setUsersLoading(true)
+    api.getStatsUsers({ ...rangeParams, page: usersPage, limit: usersLimit })
+      .then((u) => {
+        if (cancelled) return
+        setUsers(u.items)
+        setUsersTotal(u.total)
+      })
+      .catch((e) => { if (!cancelled) void message.error(String(e?.message ?? e)) })
+      .finally(() => { if (!cancelled) setUsersLoading(false) })
+    return () => { cancelled = true }
+  }, [rangeParams, usersPage, usersLimit])
 
   /* 汇总行（slug 为空）排序时固定第一行 */
 const isTotal = (r: StatsSummaryItem) => !r.slug
@@ -289,22 +315,36 @@ const numSorter = (get: (r: StatsSummaryItem) => number) => (a: StatsSummaryItem
     { title: '四层部门', dataIndex: 'dept4', ellipsis: true, render: (v: string) => v || '' },
   ]
 
-  /* Excel 下载：前端 xlsx 生成（与页面当前数据/范围一致） */
+  /* Excel 下载：导出当前范围**全部**人员（服务端分页后当前页不再是全量——
+     按 total 以 limit=100 循环拉取所有分页后前端 xlsx 生成，按钮 loading 防重复点击） */
   const exportExcel = async () => {
-    if (!users.length) { void message.warning('当前范围没有可导出的人员数据'); return }
-    const XLSX = await import('xlsx')
-    const ws = XLSX.utils.json_to_sheet(
-      users.map((u) => ({
-        工号: u.account, 名字: u.nick_name || '',
-        最近调用时间: u.last_at ? dayjs(u.last_at).format('YYYY-MM-DD HH:mm:ss') : '',
-        预览数: u.views, 调用量: u.usage,
-        一层部门: u.dept1 || '', 二层部门: u.dept2 || '', 三层部门: u.dept3 || '', 四层部门: u.dept4 || '',
-      })),
-    )
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '人员统计')
-    XLSX.writeFile(wb, `人员统计_${rangeParams.start}_${rangeParams.end}.xlsx`)
-    void message.success(`已导出 ${users.length} 人的统计`)
+    if (!usersTotal) { void message.warning('当前范围没有可导出的人员数据'); return }
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const all: StatsUserItem[] = []
+      const pages = Math.ceil(usersTotal / 100)
+      for (let p = 1; p <= pages; p++) {
+        const r = await api.getStatsUsers({ ...rangeParams, page: p, limit: 100 })
+        all.push(...r.items)
+      }
+      const ws = XLSX.utils.json_to_sheet(
+        all.map((u) => ({
+          工号: u.account, 名字: u.nick_name || '',
+          最近调用时间: u.last_at ? dayjs(u.last_at).format('YYYY-MM-DD HH:mm:ss') : '',
+          预览数: u.views, 调用量: u.usage,
+          一层部门: u.dept1 || '', 二层部门: u.dept2 || '', 三层部门: u.dept3 || '', 四层部门: u.dept4 || '',
+        })),
+      )
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, '人员统计')
+      XLSX.writeFile(wb, `人员统计_${rangeParams.start}_${rangeParams.end}.xlsx`)
+      void message.success(`已导出 ${all.length} 人的统计`)
+    } catch (e) {
+      void message.error(String((e as Error)?.message ?? e))
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -316,16 +356,27 @@ const numSorter = (get: (r: StatsSummaryItem) => number) => (a: StatsSummaryItem
         .stats-left-table .ant-table-tbody > tr > td { padding: 5px 8px; font-size: 12px; }
         .stats-left-table .ant-table-tbody > tr > td .ant-table-column-sorter { font-size: 12px; }
       `}</style>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-        {/* ── 左 1/3：统计范围 + 名称搜索（同一行）+ 系统表 ── */}
-        <Card size="small" style={{ width: '33.33%', flexShrink: 0 }} styles={{ body: { padding: 12 } }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      {/* 整页无滚动条：根容器固定为视口内高度（Content padding 24×2、无 Header）+ overflow hidden；
+          左表/人员表各自内部滚动，任何内容长度都不撑出页面级滚动条 */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
+        {/* ── 左 1/3：统计范围 + 名称搜索（同一行）+ 系统表（表体内滚） ── */}
+        <Card
+          size="small"
+          style={{ width: '33.33%', flexShrink: 0, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+          styles={{ body: { padding: 12, flex: 1, minHeight: 0, overflow: 'hidden' } }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexShrink: 0 }}>
             <span style={{ color: 'rgba(0,0,0,.45)', fontSize: 12, flexShrink: 0 }}>统计范围</span>
             <DatePicker.RangePicker
               size="small"
               style={{ flex: 1, minWidth: 190 }}
               value={range}
-              onChange={(v) => { if (v && v[0] && v[1]) setRange([v[0], v[1]]) }}
+              onChange={(v) => {
+                if (v && v[0] && v[1]) {
+                  setRange([v[0], v[1]])
+                  setUsersPage(1) // 范围变化数据集变 → 人员表回到第一页
+                }
+              }}
             />
             <Input
               size="small"
@@ -344,17 +395,20 @@ const numSorter = (get: (r: StatsSummaryItem) => number) => (a: StatsSummaryItem
             columns={leftColumns}
             dataSource={leftRows}
             pagination={false}
-            scroll={{ y: 640 }}
+            /* 自适应视口：48（Content padding）+ 24（card body padding）+ 36（控件行）+ ~32（表头）+ 余量；
+               max() 兜底小屏不为负 */
+            scroll={{ y: 'max(200px, calc(100vh - 160px))' }}
             locale={{ emptyText: <Empty description="暂无设计系统" /> }}
           />
         </Card>
 
         {/* ── 右 2/3 ── */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 右上 1/3：打点分布（指标切换 + 条形图 + 扇形图） */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'hidden' }}>
+          {/* 右上 1/3：打点分布（指标切换 + 条形图 + 扇形图）；固定自然高度不压缩 */}
           <Card
             size="small"
             title="打点分布"
+            style={{ flexShrink: 0 }}
             extra={
               <Radio.Group
                 size="small"
@@ -390,26 +444,44 @@ const numSorter = (get: (r: StatsSummaryItem) => number) => (a: StatsSummaryItem
             </Row>
           </Card>
 
-          {/* 右下 2/3：人员统计 + Excel 下载 */}
+          {/* 右下 2/3：人员统计（服务端分页）+ Excel 下载（循环拉全后导出） */}
           <Card
             size="small"
-            title={`人员统计（${users.length}）`}
+            title={`人员统计（${usersTotal}）`}
             extra={
-              <Tooltip title="导出当前范围的人员统计 Excel">
-                <Button size="small" icon={<DownloadOutlined />} onClick={() => void exportExcel()}>
+              <Tooltip title="导出当前范围全部人员的统计 Excel">
+                <Button size="small" icon={<DownloadOutlined />} loading={exporting} onClick={() => void exportExcel()}>
                   下载
                 </Button>
               </Tooltip>
             }
-            style={{ flex: 1, minHeight: 0 }}
-            styles={{ body: { padding: 12, height: 'calc(100% - 39px)', overflow: 'auto' } }}
+            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            styles={{ body: { padding: 12, flex: 1, minHeight: 0, overflow: 'hidden' } }}
           >
             <Table<StatsUserItem>
               size="small"
               rowKey="account"
               columns={userColumns}
               dataSource={users}
-              pagination={{ pageSize: 50, showSizeChanger: false, hideOnSinglePage: true }}
+              loading={usersLoading}
+              /* 高度固定：根容器视口约束后 flex:1 生效；pageSize 切到 50 行数超高时
+                 只在表体内滚（表头 sticky、分页器恒可见），不出页面滚动条。
+                 偏移 = 48（Content padding）+ ~341（打点分布卡）+ 16（gap）+ 39（卡头）
+                 + 24（卡 body padding）+ ~32（表头）+ ~48（分页器），max() 兜底小屏 */
+              scroll={{ y: 'max(160px, calc(100vh - 560px))' }}
+              pagination={{
+                current: usersPage,
+                pageSize: usersLimit,
+                total: usersTotal,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50],
+                showTotal: (t) => `共 ${t} 人`,
+                onChange: (p, l) => {
+                  // pageSize 切换 → 数据集变，回第一页；仅翻页 → 保持每页条数
+                  setUsersLimit(l)
+                  setUsersPage(l === usersLimit ? p : 1)
+                },
+              }}
               locale={{ emptyText: <Empty description="该时间范围内暂无人员打点" /> }}
             />
           </Card>

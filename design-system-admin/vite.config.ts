@@ -10,6 +10,9 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8009",
       "/static": "http://localhost:8009",
+      // 人员搜索同源网关（生产 /main/rest.root 由 nginx 同域网关承载；dev 直通 mock-api 3090，
+      // 与生产同款路径保真——client.ts 里 window.location.origin 拼接的 /main/** 全部命中此处）
+      "/main": "http://localhost:3090",
     },
   },
 })

@@ -1,8 +1,51 @@
-# 设计系统管理 API 契约（v4.1 · 六部件上传）
+# 设计系统管理 API 契约（v4.6 · 设计系统级启用/禁用）
 
 > 前端：`design-system-admin`（管理台 4 栏：设计系统管理 / 人员管理 / 操作记录 / 数据统计）+ `design-system-app`（展示端）
 > 后端：在 `lib-resource-service` 中新增 `routers/design_systems.py` 实现，存储走 `FILE_ROOT_DIR`
 > （本地 `./storage`，生产 `/data/resource`），文件相对路径 `design-systems/{slug}/…`
+>
+> **v4.6 变更**：设计系统级**启用/禁用**——4 号 PATCH 新增表单字段 `enabled`
+> （"true"/"false"）：false=禁用（`is_disabled` 列置位——**数据/文件/统计全保留**，展示端
+> 列表**过滤**、详情与 views/usage/7b 打点上报 **404**；管理台列表传 `include_disabled=1`
+> 恒可见可再启用）；true=启用恢复展示。item 新增恒有字段 `enabled`。1 号列表默认过滤禁用
+> 系统，新增查询参数 `include_disabled`（bool，管理台取全量用）；默认系统（is_default）
+> 禁用无特殊处理（标记保留）。管理台列表新增「状态」列 Switch 即点即生效；禁用行名称置灰。
+> 启动 `_ensure_column` 补列，存量全部默认启用（零迁移）。
+>
+> **v4.5 变更**：预览页面「删除」改为**禁用/启用开关**——4 号 PATCH 新增表单字段
+> `preview_enabled`（"true"/"false"）：false=禁用（`preview_disabled` 列置位——**文件不删、
+> `parts.preview` 不变、file_size 不动**，仅 `preview_url` 返回 null，展示端回落模板渲染）；
+> true=启用恢复直连。item 新增 `preview_enabled` 字段；`preview_url` 无部件**或已禁用**为 null。
+> **5a DELETE /{slug}/parts/preview 端点移除**（不再提供删除入口，preview/ 整站永久保留）。
+> 管理台编辑弹窗 preview 槽的红色垃圾箱改为「启用/禁用」开关（随确定提交，选替换包时
+> 自动拨到启用）。启动 `_ensure_column` 补列，存量全部默认启用（零迁移）。
+>
+> **v4.4 变更**：**design-system.json 重构为八栏单数据源**（模板 template.html 唯一 json，
+> 不再推导读 tokens.json/index.json/spec.json）。结构（8+1 键）：
+> `overview`（概览 md 相对路径，恒 "source.md"）+ `color/typography/spacing/radius/shadow/other`
+> （**从 tokens.json 原件顶层同名键原样深拷贝**，other 供模板 LIVE token 注入；原件缺失的键
+> 沿用老 json 同名键——存量兼容）+ `components/patterns`（`{items:[{id, name, group: 目录
+> 层级数组, height, html: 预览相对路径}]}`，条目由后端扫 assets 生成：spec.json 优先
+> [name + preview.file]，老结构按叶子 html；index.json items 顺序优先）。相对路径均相对
+> json 所在 `{slug}/` 目录解析。**组装方式**：POST/PUT parts 逐部件落盘后从 `{slug}` 落盘
+> 现状**全量重建**（未提供部件的落盘件未动，天然保留存量）；**存量迁移**：启动时全量重建
+> 所有系统 json + file_size 重算。模板删除预览格（v4 组件 html 自带变体切换 + pvHeight
+> 高度上报）与 shortNames 中文名（条目只存组件名）；概览/预览 html 按 json 相对路径 fetch。
+> 顶层不再写 name/meta/coverage/source.files 内嵌源码（管理字段归 DB 列）。
+>
+> **v4.3 变更**：skill 包 ingest 改写 SKILL.md 的 name——2 号 POST / 5 号 PUT parts 上传
+> skill 包时，后端读取 zip 第一层 SKILL.md frontmatter 的 `name`，**非 `design-system-`
+> 开头则改写为 `design-system-{name}`**（幂等：已带前缀原样不动），改写后的 SKILL.md
+> 替换进 zip 落盘（原文件名不变，`skill_zip_url` 下载即改写后版本），`skill_name` 列与
+> 响应字段 = 改写后 name（`ingest.skill.skill_name` 同报改写后值）。最终名（含前缀）
+> >255 → 该部件失败。**存量不迁移**：历史已落盘 skill 包与 skill_name 不动，仅新上传/
+> 替换生效。数据表无新列（沿用 skill_name 单列）。管理台前端零改动（技能名展示来自接口）。
+>
+> **v4.2 变更**：新增 5a 端点 `DELETE /api/design-systems/{slug}/parts/preview`——删除预览页面
+> 部件（`{slug}/preview/` 子树清理 + `preview_entry_path` 置空 → `preview_url=null`、
+> `parts.preview=false`）；展示端详情页随之回落模板页渲染（template.html + ds-data 注入）。
+> 管理台编辑弹窗 preview 槽增加「标记删除、随确定提交」入口（与替换互斥）。仅 preview
+> 部件开放删除，其余部件删除不在本期范围。
 >
 > **v4.1 变更**：新增第六部件 `preview_file`（预览页面包 zip：整站 html，含 html 即可、
 > `index.html` 优先；后端解压落盘 `{slug}/preview/**`，api1/1a 新增 `preview_url` 与
@@ -58,22 +101,23 @@
 | `tokens_file` | tokens.json | UTF-8（容忍 BOM）合法 JSON、顶层为对象（**唯一数据源**；分组结构零校验，缺失 → 模板空态） | `{slug}/tokens.json` 原件 + design-system.json token 区块 |
 | `components_file` | 组件包 .zip | zip 根须含 `components/` 目录（缺失 → 该部件失败）；子目录层级 = group、html 文件名 = 组件名；**同名多层嵌套兼容**（`components/components/…` 循环剥离，group/path 归一化不含重复层） | `{slug}/assets/components/**` + json components 区块 |
 | `patterns_file` | Pattern 包 .zip | 同组件包规则（`patterns/` 目录、同名嵌套兼容） | `{slug}/assets/patterns/**` + json patterns 区块 |
-| `skill_file` | skill 包 .zip | zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），frontmatter `name` 非空、≤255 字符；文件名不得与系统保留文件（`source.zip`/`source.md`/`design-system.json`/`tokens.json`/`preview`，大小写不敏感）冲突 | `{slug}/{原文件名}`（skill_zip_url） |
+| `skill_file` | skill 包 .zip | zip **第一层**须含 SKILL.md（不允许嵌套包裹目录），frontmatter `name` 非空；**ingest 改写 name：非 `design-system-` 开头 → `design-system-{name}`（幂等，已带前缀原样）；改写后 SKILL.md 替换进 zip 落盘（原文件名不变）；最终名（含前缀）≤255，超出 → 该部件失败**；文件名不得与系统保留文件（`source.zip`/`source.md`/`design-system.json`/`tokens.json`/`preview`，大小写不敏感）冲突 | `{slug}/{原文件名}`（skill_zip_url，zip 内 SKILL.md 为改写后版本；skill_name = 改写后 name） |
 | `preview_file` | 预览页面包 .zip | **zip 里须含 html 文件**：入口 = 根下 `index.html`（大小写不敏感）；无 `index.html` 时根下**唯一** `.html` 兜底；无 html / 多个 html 且无 index.html → 该部件失败。根无 html 且仅一个目录条目时**单层任意名包裹自动剥离**（右键压缩兼容，循环最多 3 层）；**内容不解析不校验**（整站原样落盘） | `{slug}/preview/**`（preview_url 指向入口 html） |
 
-**服务端处理**：部件独立校验/解析（`app/services/design_system_zip.py`）→ design-system.json =
-tokens 转换区块（convert_tokens_to_legacy，模板原生渲染，存量系统同构）+ components/patterns
-（assets 扫描：目录层级保留在 `group` 字段 + name 前缀；`items[].height` 固定写默认 160——展示端
-表格行预览高度，预留后续修正通道）+ `coverage` 存在性标记。**存储版瘦身**（slim，落盘前统一执行）：
-components 的 `source.files` 只留 html 条目 `{lang, path}`（去内嵌 code 与 css 条目——展示端 iframe
-src 直连 `/static` 资产，只用路径）；patterns 的 `view.cards[].states[*]` 只留 `meta` 路径
-（去内嵌 html）；无 overview 内嵌（展示端概览 fetch `source.md`，即 design_md_url 落盘件）。
+**服务端处理**：部件独立校验/解析（`app/services/design_system_zip.py`）→ 逐部件落盘后
+从 `{slug}` 落盘现状**全量重建** design-system.json（`service.rebuild_design_system_json`，
+v4.4 八栏单数据源——见 v4.4 变更块；未提供部件的落盘件未动，天然保留存量）。条目扫描
+（`scan_group_items`）：**spec.json 优先**（v3/v4 转化产物——目录含 spec.json = 一个条目，
+name = spec.name、html = spec.preview.file，文件须存在；无 preview 不上网站；spec 坏→按老
+结构扫叶子 html）；**无 spec.json 的老 zip 结构**按叶子 html 逐个成条（目录层级 = group）；
+index.json 的 items 顺序优先。`items[].height` 固定写默认 160（展示端 iframe 初始行高，
+v4 html 经 pvHeight 上报自适应）。
 
 **安全校验（部件级失败，不影响其他部件；均回报在响应 `ingest` 里）**：zip slip
 （`..`/绝对路径/反斜杠/symlink/特殊文件类型）、zip bomb（条目数 >5000、解压总量 >500MB、
 单文件 >10MB 且压缩比 >100）、同名冲突条目（同名/大小写变体既出现目录又出现文件）、
 缺 `components/`（`patterns/`）目录、tokens 非法 JSON / 顶层非对象、DESIGN.md 非 UTF-8、
-skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件、预览页面包无 html / 多 html 且无 index.html / 包裹超过 3 层、单部件 >200MB。
+skill 包非 zip / 缺 SKILL.md / 缺 name、skill 名改写后（含 `design-system-` 前缀）超 255、skill 包文件名撞保留文件、预览页面包无 html / 多 html 且无 index.html / 包裹超过 3 层、单部件 >200MB。
 
 **打包垃圾静默丢弃（不导致部件失败）**：macOS / Windows 压缩工具产物（`__MACOSX/`、
 `._*` AppleDouble、`.DS_Store`、`Thumbs.db`，含嵌套路径，如 `components/按钮/._Button.html`）
@@ -87,6 +131,8 @@ skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件�
 展示端首页卡片与管理台列表共用。
 
 **查询参数**（可选）：`search=关键词` —— 按 `name` / `slug` / `source_slug`（规范 id） / `author` 模糊匹配（ilike）。展示端不带 search 取全量。
+`include_disabled`（bool，默认 false）—— **v4.6**：是否包含已禁用系统。展示端不传（禁用系统
+不可见）；管理台传 `include_disabled=1` 取全量（禁用系统再启用的唯一入口）。
 
 **响应**：
 
@@ -142,9 +188,16 @@ skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件�
 - `json_url` / `design_md_url` / `tokens_url` / `skill_zip_url`：design-system.json（服务端解析产物，展示端数据源）、
   DESIGN.md 原件（design_md 部件落盘件）、tokens.json 原件（tokens 部件落盘件，老系统无原件为 null）、
   skill 包（保留原文件名）的可访问 URL；
-  `skill_name`：技能名 = skill 包 zip 第一层 SKILL.md frontmatter 的 `name`（无 skill 部件为 null）；
-  `preview_url`：预览页面包**入口 html** 的可访问 URL（`{slug}/preview/` 下；无 preview 部件为 null——
-  展示端检测到该字段即 iframe 直连该页，不再走模板页，也不再发 ds-data 注入）；
+  `skill_name`：技能名 = skill 包 zip 第一层 SKILL.md frontmatter 的 `name`（**ingest 时后端已改写为
+  `design-system-` 前缀**，见 v4.3；无 skill 部件为 null；存量系统为改写前的原 name）；
+  `preview_url`：预览页面包**入口 html** 的可访问 URL（`{slug}/preview/` 下；无 preview 部件
+  **或已禁用**（v4.5 `preview_enabled=false`，文件保留）为 null——展示端检测到该字段即 iframe 直连该页，
+  不再走模板页，也不再发 ds-data 注入）；
+  `preview_enabled`：预览页面启用状态（v4.5；恒有值，默认 true——禁用时仅 preview_url 置 null，
+  `parts.preview` 与落盘文件不变，操作通道走 PATCH `preview_enabled` 字段）；
+  `enabled`：**系统级启用状态**（v4.6；恒有值，默认 true）：false=禁用——**数据/文件/统计全保留**，
+  展示端列表过滤、详情与打点 404（对展示端等同"未发布"），管理台 `include_disabled=1` 可见，
+  操作通道走 PATCH `enabled` 字段；
   当前部署约定为**相对路径**（`PUBLIC_ORIGIN` 置空 → `/static/...`）：本地 dev 走前端 vite 代理
   （`/api`、`/static` 直通 8009，纯同源无 CORS 依赖）；生产由 nginx 同域配置 `/api` 与 `/static` 直通后端。
   管理台文件行展示/下载的主文件是 DESIGN.md（source.md）；`parts`：**六部件存在性**——
@@ -166,7 +219,7 @@ skill 包非 zip / 缺 SKILL.md / 缺 name、skill 包文件名撞保留文件�
 name/desc/author/usage/views/cover/icon/各 URL/parts/file_size/时间等全字段）。
 
 - **匿名可访问**（登录过期豁免清单内，与列表接口同等待遇——展示端匿名浏览详情依赖）
-- slug 不存在 / 软删 → 404
+- slug 不存在 / 软删 / **已禁用**（v4.6，深链同走「未找到」语义）→ 404
 - 建议消费顺序：进页先 `POST /{slug}/views`（计入本次浏览）再 GET 本接口——返回的
   `views` 已含本次浏览，头部一次渲染无「快照→自增」的数值跳变
 - 路由注册顺序保证管理静态路径不被单段路径参数劫持：`GET /operation-logs`（操作记录，
@@ -188,16 +241,32 @@ name/desc/author/usage/views/cover/icon/各 URL/parts/file_size/时间等全字�
 `{"provided", "ok"}` 与失败原因 / 计数 / 技能名。**请求级 400 仅限**：name 缺失
 （表单与 tokens 皆无）、`cover_file`/`icon_file` 超 2MB / 类型不符。
 
-**design-system.json 结构（v4）**：tokens.json **转换后的老区块结构**（color.groups / typography /
-spacing / radius / shadow——模板原生渲染，存量系统同构）+ `components`/`patterns`（assets 扫描：
-`items[].height` 行高默认 160；存储版不内嵌源码只留路径，见「五部件格式」节瘦身说明）
-+ 多余分组顶层原样保留（fontScale 等，暂不渲染）+ `coverage` 存在性标记。DESIGN.md 原文存
-`source.md`（展示端概览 fetch 该文件后 markdown 渲染，读不到显示「未提取到」）。
+**design-system.json 结构（v4.4，八栏单数据源——模板唯一 json）**：
+
+```json
+{
+  "overview": "source.md",
+  "color": { "title": "...", "groups": [ { "kind": "...", "label": "...", "tokens": [ { "name": "...", "token": "--...", "value": "...", "desc": "..." } ] } ] },
+  "typography": { "title": "...", "families": [ ... ], "groups": [ ... ] },
+  "spacing": { "title": "...", "groups": [ ... ] },
+  "radius": { "title": "...", "groups": [ ... ] },
+  "shadow": { "title": "...", "groups": [ ... ] },
+  "other": { "title": "...", "groups": [ ... ] },
+  "components": { "items": [ { "id": "button", "name": "Button", "group": [ "通用类" ], "height": 160, "html": "assets/components/通用类/Button/按钮-Button.html" } ] },
+  "patterns": { "items": [ { "id": "list-layout", "name": "ListPage", "group": [ "页面模式" ], "height": 160, "html": "assets/patterns/页面模式/ListPage/列表管理页-ListPage.html" } ] }
+}
+```
+
+- 六个 token 键 = tokens.json 原件顶层同名键**原样深拷贝**（结构零校验——octo 老格式也照拷，
+  模板栏级容错）；`other` 供模板 LIVE token 注入（描边等不在八栏里的 token）
+- `overview` = 概览 md 相对路径（恒 `source.md`；文件不存在时模板概览栏容错提示）
+- `components/patterns` 条目 html = 预览相对路径（v4 组件 html 自带变体切换 + pvHeight 高度上报）
+- 相对路径均相对 json 所在 `{slug}/` 目录解析；顶层不再写 name/meta/coverage/source.files
 
 **行为**：slug 后端随机生成（无冲突无 409；同 source_slug 重复上传可共存）；五个部件全部
-未提供时创建**纯壳系统**（json 仅 name + coverage）。写 `design_systems` 表记录与操作日志
-（detail 含部件成败摘要）；`default=true` 时清除其他系统的默认标记；`file_size` = `{slug}` 目录
-落盘内容合计。
+未提供时创建**纯壳系统**（json 仅 overview，六键/条目按落盘现状为空）。写 `design_systems`
+表记录与操作日志（detail 含部件成败摘要）；`default=true` 时清除其他系统的默认标记；
+`file_size` = `{slug}` 目录落盘内容合计。
 
 **响应**：列表 item 结构（`slug` 为新生成的随机 id）+ 顶层 `ingest` 逐部件报告：
 
@@ -217,7 +286,7 @@ spacing / radius / shadow——模板原生渲染，存量系统同构）+ `comp
 
 - `components/patterns.count`：扫描出的叶子 html 数；`nested`：检测到同名嵌套目录并已剥离（提示性）
 - `preview.entry`：入口 html 文件名（preview_url 指向它）、`preview.nested`：检测到单层包裹目录并已剥离（提示性）
-- `skill.skill_name`：SKILL.md frontmatter name；失败部件的 `error` 为可展示的原因描述
+- `skill.skill_name`：SKILL.md frontmatter name **改写后**的值（`design-system-` 前缀，见六部件格式节）；失败部件的 `error` 为可展示的原因描述
 
 ### 3. GET /api/design-systems/{slug}/json —— 详情 JSON
 
@@ -305,6 +374,8 @@ Pixso 侧字段（pixso_name/pixso_guid/file_key/…/instance_spec/instance_code
 | author | 可选 | 作者，**JSON 数组字符串**（/getAccount 完整值条目，空数组清空作者）；写入时按 account 兜底补全 |
 | usage | 可选 | 调用量修正通道（API 层保留）；**界面不提供编辑入口**，手动修正走此字段 |
 | views | 可选 | 预览量修正通道（API 层保留）；**界面不提供编辑入口**，手动修正走此字段；非负整数、整字段覆盖（绝对值语义，非增量） |
+| preview_enabled | 可选 | **预览页面启用/禁用开关**（v4.5）："true"=启用（直连预览页）；"false"=禁用（`preview_disabled` 置位——**文件不删、`parts.preview` 不变、`file_size` 不动**，仅 `preview_url` 返回 null，展示端回落模板渲染）；空/缺省不动；无 preview 部件时接受但无可见效果 |
+| enabled | 可选 | **系统级启用/禁用开关**（v4.6）："true"=启用（展示端可见）；"false"=禁用（`is_disabled` 置位——**数据/文件/统计全保留**，展示端列表过滤、详情与打点 404，管理台 `include_disabled=1` 可见可再启用）；空/缺省不动；默认系统禁用无特殊处理（is_default 标记保留） |
 | cover_file | File? | 可选新封面（jpg/png/webp ≤2MB）；上传则覆盖现有封面，不上传则保留现有封面 |
 | icon_file | File? | 可选新图标（jpg/png/webp/svg ≤2MB）；上传则覆盖现有图标，不上传则保留现有图标 |
 
@@ -317,18 +388,27 @@ Pixso 侧字段（pixso_name/pixso_guid/file_key/…/instance_spec/instance_code
 `components_file` / `patterns_file` / `skill_file` / `preview_file`），**至少提供一个**（缺失 → 400「未提供任何部件文件」）。
 
 **行为**（逐部件独立成败，响应 `ingest` 报告同 2 号）：
-- **只换提供部件的内容**：components/patterns → `assets/{group}` 子树整体替换 + json 区块重建；
-  preview → `preview/` 子树整体替换 + `preview_entry_path` 列更新（未提供部件保留存量入口）；
-  tokens → 剔除旧区块（剔除集 = 标准五键 ∪ 旧 tokens 原件顶层键）后合入新转换结果，
-  **name/id/cover/meta 不跟随**（管理字段归 PATCH）；skill → 原文件名落盘，新名与旧附件不同时
-  按 `skill_zip_path` 列自动清理旧文件；DESIGN.md → `source.md` 覆盖
-- **未提供部件取存量**：老系统无 tokens 原件 → 存量 json 的 token 区块原样保留（编辑兼容）
+- **只换提供部件的内容**（落盘子树/文件整体替换）：components/patterns → `assets/{group}`
+  子树整体替换；preview → `preview/` 子树整体替换 + `preview_entry_path` 列更新（未提供
+  部件保留存量入口）；tokens → `tokens.json` 原件覆盖；skill → 原文件名落盘，新名与旧附件
+  不同时按 `skill_zip_path` 列自动清理旧文件（SKILL.md name 前缀改写同 2 号，见「六部件格式」）；
+  DESIGN.md → `source.md` 覆盖
+- **json 全量重建**（v4.4）：任一部件落盘成功后从 `{slug}` 落盘现状全量重建
+  design-system.json（`rebuild_design_system_json`）——**未提供部件的落盘件未动，天然保留
+  存量**（老系统无 tokens 原件 → 六键沿用老 json 同名键；存量 assets 照扫）；管理字段
+  （name/source_slug 等）在 DB 列，不参与 json
 - **管理字段不受影响**：name/source_slug/作者/封面/图标/调用量/描述/默认标记走 PATCH /{slug}
 - 写操作日志（action = `update_parts`，detail 含部件成败摘要）；`file_size` 重算
 - slug 不存在 → 404；软删系统不可见（404）
 
 **响应**：同 2 号（item + `ingest`）。
 
+### 5a. ~~DELETE /api/design-systems/{slug}/parts/preview~~ —— 已移除（v4.5）
+
+v4.2 引入的删除预览页面部件端点在 **v4.5 移除**：预览页面不再支持删除（历史数据
+`{slug}/preview/` 整站**永久保留**），改为 4 号 PATCH 的 `preview_enabled` 禁用/启用开关——
+禁用时仅 `preview_url` 返回 null（展示端回落模板渲染），`parts.preview` 与落盘文件、
+`file_size` 均不变。
 ### 6. DELETE /api/design-systems/{slug} —— 删除
 
 **行为**：软删（`is_deleted=1`），列表不再返回；写操作日志。**响应**：`200 {"detail": "ok"}`。
@@ -433,7 +513,7 @@ X-User-Data 解密结果 ──缺名字或部门──► users 表（AuthMiddl
 | `/stats/summary` | + `search`（按系统名称模糊） | `{ total:{views,usage,users,last_at}, items:[{slug,name,views,usage,users,last_at}] }` —— 每系统一行（无数据补 0）+ 全局汇总（users 为全局 DISTINCT，非各行之和） |
 | `/stats/trend` | + `metric=view\|usage\|users`、`granularity=day\|week\|month` | `{ buckets:[{date,dept1,value}] }` —— 时间桶（周=所在周周一）× 一层部门扁平行，前端透视为堆叠柱状图；users 指标按（桶,部门）DISTINCT |
 | `/stats/dept-share` | + `metric` | `{ items:[{dept1,value}] }` —— 一层部门占比（按值降序，0 值切片不返回） |
-| `/stats/users` | + `search`（工号/名字模糊） | `{ total, items:[{account,nick_name,last_at,views,usage,dept1..4}] }` —— 名字/部门取该账号最新事件快照；匿名事件不生成人员行 |
+| `/stats/users` | + `search`（工号/名字模糊）、`page`/`limit`（**服务端分页**，默认 1/20，limit ≤100） | `{ total, page, limit, items:[{account,nick_name,last_at,views,usage,dept1..4}] }` —— 名字/部门取该账号最新事件快照；匿名事件不生成人员行；**total=全量人数**（聚合按全量计算，每人合计不受分页影响；items 为 last_at 倒序排序后的当前页切片） |
 
 ### 7a. POST /api/design-systems/{slug}/views —— 预览量自增
 
@@ -558,6 +638,8 @@ is_active（软删）、created_at/updated_at。
 ## 9. GET /api/design-systems/operation-logs —— 操作记录
 
 设计系统模块操作记录，固定 `target_type IN (design_system, ds_whitelist)`，按 `id` 倒序分页。
+**`operator_account` 为 unknown 的记录不返回**（历史脚本/公开维护通道 7d 无登录态写入的
+unknown 日志，页面不展示；NULL 同样排除）——total/分页按过滤后口径。
 
 **查询参数**：
 
@@ -609,7 +691,9 @@ is_active（软删）、created_at/updated_at。
 | file_path | varchar(500) | 解析产物 JSON 相对路径 |
 | source_md_path | varchar(500) | DESIGN.md 原件相对路径（design_md_url 数据源，design_md 部件替换时更新） |
 | source_zip_path | varchar(500) | **旧 zip 直传时代历史遗留**（v4 起不再读取、不对外暴露；列保留仅为存量数据不动） |
-| skill_zip_path | varchar(500) | skill 包相对路径（保留上传原文件名；skill_zip_url 数据源；skill 部件替换换名时旧文件自动清理） |
+| skill_zip_path | varchar(500) | skill 包相对路径（保留上传原文件名；skill_zip_url 数据源；skill 部件替换换名时旧文件自动清理；落盘 zip 内 SKILL.md 为 name 改写后版本） |
+| preview_disabled | bool | 预览页面禁用标记（v4.5；默认 false=启用）：true 时 preview_url 返回 null（展示端回落模板渲染），preview_entry_path/parts.preview/落盘文件不变；切换通道仅 PATCH `preview_enabled` 字段 |
+| is_disabled | bool | 系统级禁用标记（v4.6；默认 false=启用）：true 时展示端列表过滤、详情与 views/usage/7b 打点 404（数据/文件/统计全保留）；管理台列表 include_disabled 可见；切换通道仅 PATCH `enabled` 字段 |
 | file_size | int | `{slug}` 目录落盘内容合计（design-system.json + source.md + tokens.json + assets/** + skill 包；旧数据为 zip/MD 原件大小） |
 | created_by / updated_by | varchar(100) | 操作人（AuthMiddleware 解密） |
 | is_deleted | int | 软删标记 |
@@ -627,7 +711,7 @@ is_active（软删）、created_at/updated_at。
    │  ├─ source.md                    design_md 部件落盘件（DESIGN.md 原文，展示端概览数据源）
    │  ├─ tokens.json                  tokens 部件原件（唯一数据源留档；老系统无此文件）
    │  ├─ my-skill-pack.zip            skill 包原样保留（上传原文件名；skill_zip_url 可下载）
-   │  ├─ preview/…                    预览页面包整站落盘（preview_url 指向其入口 html；单层包裹已剥离）
+   │  ├─ preview/…                    预览页面包整站落盘（preview_url 指向其入口 html；单层包裹已剥离；v4.5 起永久保留——禁用仅 preview_url 置 null，文件不删）
    │  └─ assets/{components,patterns}/…  组件包 / Pattern 包落盘资产（html/css 经 /static 可直接访问；同名嵌套层已剥离）
    ├─ h-design/…                      （存量：design-system.json + source.md 两件，编辑部件时原样兼容）
    └─ zips-era/…                      （旧 zip 直传时代系统：磁盘上可能残留 source.zip 历史文件，v4 起无任何入口引用）

@@ -29,7 +29,8 @@ import { userOption } from '../utils/userOption'
  *   任选子集一次 multipart 提交；逐部件独立成败——失败部件红字汇总提示，其余部件正常入库；
  *   一个部件都不选 = 纯壳系统（仅名称）
  * - edit：各槽显示存量状态（item.parts）+ 可选替换；内容走 PUT /{slug}/parts（仅换提供部件，
- *   未提供部件取存量），meta/封面/图标仍走 PATCH
+ *   未提供部件取存量），meta/封面/图标仍走 PATCH；preview 槽状态行尾部提供「启用/禁用」开关
+ *   （v4.5）：随「确定」PATCH preview_enabled 提交，禁用后展示端详情页回落模板渲染（文件保留）
  * - view：同五个部件行——每行自身状态（✓/✗ + 计数/技能名）+ 自身文件下载
  *   （DESIGN.md / tokens.json / skill 包；组件包/Pattern 包为解压子树无原件不提供下载），
  *   底部小字附规范 id / 内容合计 / 更新时间
@@ -263,6 +264,10 @@ export default function DesignSystemFormModal({
     preview: null,
   })
 
+  // 编辑态「预览页面启用」开关（v4.5）：禁用=preview_url 置 null 展示端回落模板（文件保留）；
+  // 与替换不互斥——选了替换文件时开关自动拨到启用（上传新包通常即想看新页，可手动改回）
+  const [previewEnabled, setPreviewEnabled] = useState(true)
+
   // 作者（AutoComplete 输入框 + /getAccount 联想，选中即得完整值；已选以可删除标签展示）
   const [authors, setAuthors] = useState<AuthorEntry[]>([])
   const [authorOptions, setAuthorOptions] = useState<{ value: string; label: React.ReactNode }[]>([])
@@ -293,6 +298,7 @@ export default function DesignSystemFormModal({
     if (!open) return
     setPartFiles({ design_md: null, tokens: null, components: null, patterns: null, skill: null, preview: null })
     setPartErrors({ design_md: null, tokens: null, components: null, patterns: null, skill: null, preview: null })
+    setPreviewEnabled(isCreate ? true : (item?.preview_enabled ?? true))
     setAuthors(isCreate ? [] : (item?.author ?? []))
     setAuthorOptions([])
     setAuthorKeyword('')
@@ -322,11 +328,13 @@ export default function DesignSystemFormModal({
     }
   }, [open, mode, item, form, isCreate])
 
-  /** 部件槽文件选择（扩展名/大小预检；内容解析与结构校验由后端逐部件完成） */
+  /** 部件槽文件选择（扩展名/大小预检；内容解析与结构校验由后端逐部件完成）；
+   *  选 preview 替换文件 → 开关自动拨到启用（上传新包通常即想看新页，可手动改回） */
   const handlePartFile = (key: PartKey, f: File) => {
     const err = validatePartFile(key, f)
     setPartFiles((prev) => ({ ...prev, [key]: err ? null : f }))
     setPartErrors((prev) => ({ ...prev, [key]: err }))
+    if (key === 'preview' && !err) setPreviewEnabled(true)
   }
 
   /** 移除已选部件文件 */
@@ -461,6 +469,9 @@ export default function DesignSystemFormModal({
         if (values.name !== item.name) patch.name = values.name
         if (values.desc !== (item.desc ?? '')) patch.desc = values.desc
         if (values.default !== (item.default ?? false)) patch.default = values.default
+        // 预览页面启用开关（v4.5）：只提交变化——与当前状态不同才进 patch；
+        // 禁用=preview_url null 展示端回落模板（文件保留），启用恢复直连
+        if (previewEnabled !== (item.preview_enabled ?? true)) patch.preview_enabled = previewEnabled
         // 作者变化判断：规范化后对比（服务端会补全 nickName/dept，比较时以关键字段为准）
         const normAuthors = (list: AuthorEntry[]) =>
           JSON.stringify(
@@ -479,6 +490,9 @@ export default function DesignSystemFormModal({
             iconFile,
             ...(authorsChanged ? { authors } : {}),
           })
+          if (patch.preview_enabled !== undefined) {
+            message.success(previewEnabled ? '预览页面已启用，恢复直连' : '预览页面已禁用，展示端改用模板渲染')
+          }
         }
         message.success(`已更新「${values.name}」`)
         onClose()
@@ -684,8 +698,12 @@ export default function DesignSystemFormModal({
         return parts.patterns ? `已上传（${parts.patterns_count} 个 Pattern）` : '未上传'
       case 'skill':
         return parts.skill ? `已上传（技能名：${item.skill_name ?? '—'}）` : '未上传'
-      case 'preview':
-        return parts.preview ? `已上传（入口：${item.preview_url?.split('/').pop() ?? '—'}）` : '未上传'
+      case 'preview': {
+        if (!parts.preview) return '未上传'
+        // 禁用时 preview_url 为 null（入口名不可得）——只显示禁用标记；启用时显示入口文件名
+        if (item.preview_enabled === false) return '已上传（已禁用）'
+        return `已上传（入口：${item.preview_url?.split('/').pop() ?? '—'}）`
+      }
     }
     return ''
   }
@@ -740,9 +758,10 @@ export default function DesignSystemFormModal({
   }
 
   /** 单个部件槽（三态）：
-   *  view = 自身状态（✓/✗ + 计数/技能名）+ 自身文件下载；
+   *  view = 自身状态（✓/✗ + 计数/技能名/禁用标记）+ 自身文件下载；
    *  create = 拖拽区（选中显示文件名）；
-   *  edit = 存量状态 + 可选替换拖拽区 */
+   *  edit = 存量状态 + 可选替换拖拽区；preview 槽状态行尾部提供启用/禁用开关（v4.5，
+   *  随确定 PATCH preview_enabled 提交；选替换文件时自动拨到启用） */
   const renderPartSlot = (slot: (typeof PART_SLOTS)[number]) => {
     const file = partFiles[slot.key]
     const err = partErrors[slot.key]
@@ -776,14 +795,31 @@ export default function DesignSystemFormModal({
         </div>
       )
     }
+    // edit 分支：存量状态 + 可选替换拖拽区；preview 槽状态行尾部提供「启用/禁用」开关（v4.5）——
+    // 随「确定」PATCH preview_enabled 提交：禁用=展示端回落模板渲染（文件保留），启用=直连预览页
+    const isPreviewSlot = slot.key === 'preview'
+    const hasExistingPreview = !!item?.parts?.preview
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: INPUT_WIDTH }}>
-        <Typography.Text
-          type={item?.parts?.[slot.key] ? 'success' : 'secondary'}
-          style={{ fontSize: 12 }}
-        >
-          当前状态：{partStatusText(slot.key)}
-        </Typography.Text>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Typography.Text
+            type={item?.parts?.[slot.key] ? 'success' : 'secondary'}
+            style={{ fontSize: 12 }}
+          >
+            当前状态：{partStatusText(slot.key)}
+          </Typography.Text>
+          {/* 存量有 preview → 状态行尾部启用/禁用开关（随确定提交，可取消反悔） */}
+          {isPreviewSlot && hasExistingPreview && (
+            <Switch
+              size="small"
+              checked={previewEnabled}
+              checkedChildren="启用"
+              unCheckedChildren="禁用"
+              onChange={setPreviewEnabled}
+              style={{ flexShrink: 0 }}
+            />
+          )}
+        </div>
         <CompactDropzone
           accept={slot.accept}
           beforeUpload={(f) => handlePartFile(slot.key, f)}
