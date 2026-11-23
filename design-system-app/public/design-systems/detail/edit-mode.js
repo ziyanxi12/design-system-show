@@ -25,7 +25,8 @@ const IC = {
 }
 
 export async function editSetup(ctx) {
-  const { slug, components, redraw, main, esc } = ctx
+  const { slug, components, redraw, main, esc, apiBase } = ctx
+  var API = (apiBase || "") + "/api/design-systems/"
   let erows = ctx.erows
   const res = ctx.res
 
@@ -49,11 +50,11 @@ export async function editSetup(ctx) {
             for (const e of Object.values(lib.components || {})) {
               const cf = e.containing_frame || {}
               const sg = cf.containingStateGroup
-              if (e.isVariant && sg) {
+              if (sg) {
                 const info = { guid: sg.nodeId, name: sg.name, category: cf.name || "", thumb: e.thumbnail_url || "", fileKey: lib.fileKey || "" }
                 if (e.node_id) m.set(e.node_id, info)
                 if (!m.has(sg.nodeId)) m.set(sg.nodeId, info)
-              } else if (!e.isVariant && e.node_id) {
+              } else if (e.node_id) {
                 m.set(e.node_id, { guid: e.node_id, name: String(e.name || "").split("/")[0], category: cf.name || "", thumb: e.thumbnail_url || "", fileKey: lib.fileKey || "" })
               }
             }
@@ -78,7 +79,7 @@ export async function editSetup(ctx) {
 
   async function reloadEROWS() {
     try {
-      const r = await fetch("/api/design-systems/" + slug + "/mapping")
+      const r = await fetch(API + slug + "/mapping")
       if (r.ok) { const d = await r.json(); erows = Object.fromEntries((d.items || []).map(x => [x.component_name, x])) }
     } catch (e) { }
   }
@@ -253,7 +254,7 @@ export async function editSetup(ctx) {
     Promise.all([
       fetchLibraryComponents(lib.id),
       new Promise(function (r) { setTimeout(r, 1200) }),
-      (async function () { try { await fetch("/api/design-systems/" + slug + "/mapping/sync", { method: "POST" }); await reloadEROWS() } catch (e) { } })(),
+      (async function () { try { await fetch(API + slug + "/mapping/sync", { method: "POST" }); await reloadEROWS() } catch (e) { } })(),
     ]).then(function (arr) {
       var full = arr[0]
       var candidates = buildCandidates(full.components)
@@ -281,7 +282,7 @@ export async function editSetup(ctx) {
     if (!items.length) { closeWiz(); return }
     W.saving = true; W.err = ""
     setFoot('<span class="spacer"></span><button class="em-btn" disabled>取消</button><button class="em-btn em-btn-primary" disabled>保存中...</button>')
-    fetch("/api/design-systems/" + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: items }) })
+    fetch(API + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: items }) })
       .then(function (res) {
         if (!res.ok) return res.json().catch(function () { return null }).then(function (b) { throw new Error("HTTP " + res.status + (b && b.detail ? "：" + b.detail : "")) })
         closeWiz(); return refresh()
@@ -434,11 +435,11 @@ export async function editSetup(ctx) {
       }
     }
     var doPut = function () {
-      return fetch("/api/design-systems/" + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: [item] }) })
+      return fetch(API + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: [item] }) })
     }
     doPut().then(function (res) {
       if (res.status === 400) {
-        return fetch("/api/design-systems/" + slug + "/mapping/sync", { method: "POST" }).catch(function () { }).then(doPut)
+        return fetch(API + slug + "/mapping/sync", { method: "POST" }).catch(function () { }).then(doPut)
       }
       return res
     }).then(function (res) {

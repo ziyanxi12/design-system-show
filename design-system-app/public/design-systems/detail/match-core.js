@@ -31,14 +31,14 @@ export function buildCandidates(components) {
   for (const x of Object.values(components || {})) {
     const cf = x.containing_frame || {};
     const sg = cf.containingStateGroup;
-    if (x.isVariant && sg) {
+    if (sg) {
       let s = sets.get(sg.name);
       if (!s) {
         s = { guid: sg.nodeId, category: cf.name || "", variants: [], contentKey: x.component_key || null };
         sets.set(sg.name, s);
       }
       if (x.name) s.variants.push(String(x.name));
-    } else if (!x.isVariant) {
+    } else {
       const first = String(x.name || "").split("/")[0];
       if (!first || isNoise(first)) continue;
       if (!plains.has(first)) plains.set(first, { guid: x.node_id, category: cf.name || "" });

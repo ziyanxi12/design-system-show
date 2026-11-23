@@ -83,7 +83,7 @@ export default function EditMappingPage(): JSX.Element {
     if (m && dsReady() && iframe?.contentWindow) {
       iframe.contentWindow.postMessage({
         type: "ds-data",
-        data: { id: id(), meta: m, edit: true },
+        data: { id: id(), meta: m, edit: true, apiBase: API_BASE },
       }, "*")
     }
   })

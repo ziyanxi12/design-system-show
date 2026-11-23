@@ -1179,7 +1179,7 @@ const json=p=>get(p).then(r=>r.text()).then(t=>{try{return JSON.parse(t)}catch(e
    json 内相对路径（overview / items[].html）再取——预览每行一个 iframe，无多级 spec 读取。 */
 let DS=null, BASE="";
 /* 编辑模式全局（展示端 #/design-system/{slug}/edit 进入时宿主传 edit:true + id） */
-let EDIT=false, SLUG="", EROWS={};
+let EDIT=false, SLUG="", EROWS={};let API_BASE_STR="";
 const res=p=>BASE+p;
 /* 页面主体：数据加载 + 渲染（宿主/独立两种模式复用，仅 DS/BASE 来源不同） */
  async function run(){
@@ -1327,7 +1327,7 @@ $(".dsd-nav").onclick=e=>{const t=e.target.closest("[data-toggle-sub]");if(t){t.
 main.onscroll=()=>{if(main.dataset.lock)return;const top=main.scrollTop+80;let cur=SECTIONS[0][0];SECTIONS.forEach(([k])=>{if(off($("#sec-"+k))<=top)cur=k});setNav(cur)};
  $$(".cp-frame").forEach(f=>{f.addEventListener("load",()=>live(f));live(f)});
  /* 编辑模式：动态加载向导 + 编辑弹窗逻辑（查看路由零开销） */
- if(EDIT)import("./edit-mode.js").then(m=>m.editSetup({slug:SLUG,components:D.components,erows:EROWS,redraw:()=>draw("components"),main,esc,icon,res})).catch(e=>console.warn("[edit] edit-mode:",e));
+ if(EDIT)import("./edit-mode.js").then(m=>m.editSetup({slug:SLUG,components:D.components,erows:EROWS,redraw:()=>draw("components"),main,esc,icon,res,apiBase:API_BASE_STR})).catch(e=>console.warn("[edit] edit-mode:",e));
  const h=location.hash.slice(1);go(SECTIONS.some(s=>s[0]===h)?h:"overview",false);
  }
 
@@ -1340,7 +1340,7 @@ if(window.parent!==window){
  window.addEventListener("message",e=>{
    const d=e.data;if(booted||!d||d.type!=="ds-data")return;
    const meta=(d.data||{}).meta||{};
-   EDIT=!!(d.data||{}).edit;SLUG=String((d.data||{}).id||"");
+   EDIT=!!(d.data||{}).edit;SLUG=String((d.data||{}).id||"");API_BASE_STR=String((d.data||{}).apiBase||"");
   if(!meta.jsonUrl){failPage("缺少数据源 jsonUrl","本页需由设计系统展示端打开（数据由展示端经 api1 的 json_url 注入），请从展示端列表进入。");return}
   const s=String(meta.jsonUrl),i=s.lastIndexOf("/");
   if(/^(blob:|data:)/i.test(s)||i<1){failPage("数据源地址无法解析","jsonUrl："+esc(meta.jsonUrl));return}
