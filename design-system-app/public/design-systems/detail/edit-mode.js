@@ -5,8 +5,16 @@
 
 const PIXSO_URL_BASE = "http://localhost:3667"
 
-/* 组件库数据源：直接 import fetch-subscribe.js（demo 写死 JSON；正式环境换实现，接口不变） */
-import { fetchSubscribedLibraries, getLibraryById } from "./fetch-subscribe.js"
+/* 组件库列表：直接 import fetch-subscribe.js（轻量元数据，demo 写死；正式换实现） */
+import { fetchSubscribedLibraries } from "./fetch-subscribe.js"
+
+/* 组件明细数据：点「开始匹配」时按需 HTTP 获取（demo = mock-api 3090；正式换 URL） */
+const PIXSO_COMPONENTS_API = "http://localhost:3090"
+async function fetchLibraryComponents(libId) {
+  const r = await fetch(PIXSO_COMPONENTS_API + "/pixso/libraries/" + libId)
+  if (!r.ok) throw new Error("HTTP " + r.status)
+  return r.json()
+}
 
 const IC = {
   search: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.4" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 9.4L12.5 12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
@@ -36,7 +44,7 @@ export async function editSetup(ctx) {
         const list = snap.libraries || []
         for (const l of (fk ? list.filter(x => x.fileKey === fk) : list)) {
           try {
-            const lib = await getLibraryById(l.id)
+            const lib = await fetchLibraryComponents(l.id)
             if (!lib) continue
             for (const e of Object.values(lib.components || {})) {
               const cf = e.containing_frame || {}
@@ -243,7 +251,7 @@ export async function editSetup(ctx) {
     W.err = ""
     showMatching()
     Promise.all([
-      getLibraryById(lib.id),
+      fetchLibraryComponents(lib.id),
       new Promise(function (r) { setTimeout(r, 1200) }),
       (async function () { try { await fetch("/api/design-systems/" + slug + "/mapping/sync", { method: "POST" }); await reloadEROWS() } catch (e) { } })(),
     ]).then(function (arr) {
