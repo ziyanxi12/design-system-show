@@ -3,8 +3,10 @@
  * 模板字面量嵌套 ≤ 2 层，复杂 HTML 用辅助函数构建。
  */
 
-const PIXSO_API_BASE = "http://localhost:3090"
 const PIXSO_URL_BASE = "http://localhost:3667"
+
+/* 组件库数据源：直接 import fetch-subscribe.js（demo 写死 JSON；正式环境换实现，接口不变） */
+import { fetchSubscribedLibraries, getLibraryById } from "./fetch-subscribe.js"
 
 const IC = {
   search: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.4" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 9.4L12.5 12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
@@ -30,14 +32,12 @@ export async function editSetup(ctx) {
     if (!libIdx.has(k)) libIdx.set(k, (async () => {
       const m = new Map()
       try {
-        const lr = await fetch(PIXSO_API_BASE + "/pixso/libraries")
-        if (!lr.ok) return m
-        const list = (await lr.json()).libraries || []
+        const snap = await fetchSubscribedLibraries()
+        const list = snap.libraries || []
         for (const l of (fk ? list.filter(x => x.fileKey === fk) : list)) {
           try {
-            const r = await fetch(PIXSO_API_BASE + "/pixso/libraries/" + l.id)
-            if (!r.ok) continue
-            const lib = await r.json()
+            const lib = await getLibraryById(l.id)
+            if (!lib) continue
             for (const e of Object.values(lib.components || {})) {
               const cf = e.containing_frame || {}
               const sg = cf.containingStateGroup
@@ -112,8 +112,7 @@ export async function editSetup(ctx) {
     root.querySelectorAll("[data-em-wiz-close]").forEach(function (b) { b.addEventListener("click", closeWiz) })
     fillSelect()
     if (!W.libs.length) {
-      fetch(PIXSO_API_BASE + "/pixso/libraries")
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)) })
+      fetchSubscribedLibraries()
         .then(function (d) { W.libs = d.libraries || []; W.dom = W.libs[0] ? W.libs[0].domain : ""; fillSelectBody() })
         .catch(function (e) { W.err = "组件库列表加载失败：" + e.message; fillSelectBody() })
     }
@@ -244,7 +243,7 @@ export async function editSetup(ctx) {
     W.err = ""
     showMatching()
     Promise.all([
-      fetch(PIXSO_API_BASE + "/pixso/libraries/" + lib.id).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)) }),
+      getLibraryById(lib.id),
       new Promise(function (r) { setTimeout(r, 1200) }),
       (async function () { try { await fetch("/api/design-systems/" + slug + "/mapping/sync", { method: "POST" }); await reloadEROWS() } catch (e) { } })(),
     ]).then(function (arr) {
