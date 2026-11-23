@@ -28,6 +28,22 @@ GET `/getUserInfo?account=h20031134`
   - 未命中：`{"content":null,"errorCode":404,"success":false}`
 - 数据源同 data.js；供后端打点身份完整化（USER_INFO_API_URL）本地联调用
 
+## 3090 · server.js — pixso/libraries 组件库订阅（组件 ↔ Pixso 映射：编辑路由向导数据源）
+
+数据来自 `../scripts/pixso-mapping/fetch-subscribe.js`（demo 写死 JSON：H Design 真实库 264 条快照 + 8 个 stub 库撑领域树；正式环境换真实脚本，输出结构不变——结构契约见该文件头注释）。服务启动时加载一次。无需鉴权，CORS `*` 已开，展示端直连 `http://localhost:3090`。
+
+GET `/pixso/libraries`
+
+- 组件库**列表投影**（不含 components 明细）：`{"fetchedAt":"…","libraries":[{"id":"hdesign-official","name":"H Design 官网设计规范","domain":"H Design","version":"1.0","componentCount":38,"icon":"harmonyos","fileKey":"8mM_…","libraryName":"…"},…]}`
+- 消费方：展示端编辑路由（`#/edit/:id`）「关联设计组件」向导的**选择规范**弹窗——`domain` 分领域树、`name` 搜索、`version/componentCount` 展示
+
+GET `/pixso/libraries/:id`
+
+- 单个组件库**全量**（含 components 完整清单，guid 为 key，264 条字段结构见 fetch-subscribe.js 文件头）
+- 选定库后前端匹配的数据源（名字匹配在展示端跑，核心逻辑与脚本共用 `design-system-app/src/lib/match-core.js`）
+- 不存在 → `404 {"detail":"组件库不存在：<id>"}`
+
+
 ## 3091 · face-server.js — face 用户头像
 
 GET `/face/20031134/120`

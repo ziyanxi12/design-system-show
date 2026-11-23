@@ -364,10 +364,11 @@ Pixso 侧字段（pixso_name/pixso_guid/file_key/…/instance_spec/instance_code
     "pixso_category": "操作类", "file_key": "8mM_…", "match_type": "exact", "status": "aligned", "url": "" } ] }
 ```
 
-- 可写字段：pixso_name / pixso_guid / file_key / page_id / page_name / pixso_category /
+- 可写字段：**html_zh**（编辑弹窗写组件中文名）/ pixso_name / pixso_guid / file_key / page_id / page_name / pixso_category /
   component_content_key / match_type / status / url / instance_spec（dict 自动转存 JSON 字符串）/ instance_code；
   **未提供的字段不动**（merge 而非整体替换）
-- **manual 保护**：存量行 `match_type == "manual"` 一律不覆盖（人工修正成果，重跑匹配只跳过）
+- **manual 保护**：存量行 `match_type == "manual"` 且请求项 `match_type != "manual"`（批量匹配重跑通道）→ 跳过不覆盖
+  （人工修正成果）；请求项自身带 `match_type == "manual"`（编辑弹窗的人工编辑通道）→ **放行**——人工行允许继续人工编辑
 - component_name 不在表中 → 400（提示先 POST /{slug}/mapping/sync 同步组件清单）
 
 **响应**：`{"slug": "…", "total": 51, "updated": 50, "skipped_manual": 1, "aligned": 11, "partial": 1, "missing": 39}`
