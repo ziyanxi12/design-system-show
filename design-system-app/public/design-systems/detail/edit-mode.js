@@ -1,7 +1,13 @@
 /* 组件↔Pixso 映射编辑模式（template.html EDIT=true 时动态加载）
- * 渲染策略：弹窗骨架一次创建，交互用局部 DOM 更新（class toggle / 局部 HTML），避免闪烁。
- * 模板字面量嵌套 ≤ 2 层，复杂 HTML 用辅助函数构建。
- */
+  * 渲染策略：弹窗骨架一次创建，交互用局部 DOM 更新（class toggle / 局部 HTML），避免闪烁。
+  * 模板字面量嵌套 ≤ 2 层，复杂 HTML 用辅助函数构建。
+  *
+  * 暂存-发布模型（v2）：
+  * - confirmMatch / confirmEdit 不再立即 PUT——修改写入本地暂存层 staged（sessionStorage 持久化），
+  *   表格经 ctx.applyErows 即时重渲染，宿主「确认发布」按钮亮起（postMessage ds-dirty）；
+  * - 宿主点发布 → postMessage ds-publish → publish() 一次 PUT 全量暂存行（400→sync→重试兜底）；
+  * - 匹配阶段零后端写入（sync 推迟到发布时触发）。
+  */
 
 const PIXSO_URL_BASE = "http://localhost:3667"
 
@@ -27,12 +33,53 @@ const IC = {
 export async function editSetup(ctx) {
   const { slug, components, redraw, main, esc, apiBase } = ctx
   var API = (apiBase || "") + "/api/design-systems/"
-  let erows = ctx.erows
+  const applyErows = ctx.applyErows
   const res = ctx.res
 
   let MC
   try { MC = await import("./match-core.js") } catch (e) { console.warn("[edit] match-core:", e); return }
   const { buildCandidates, matchAll, buildInstanceSpec, parsePixsoUrl, pixsoThumb } = MC
+
+  /* ── 暂存层 ──
+   * base   = GET /mapping 服务端快照（发布成功后刷新）
+   * staged = Map<name, row> 暂存覆盖层（confirmMatch/confirmEdit 写入，sessionStorage 跨刷新）
+   * erows  = 工作态 base⊕staged —— 表格渲染 / 向导 kept 基线 / 编辑弹窗回填统一读它 */
+  let base = ctx.erows || {}
+  let erows = base
+  const staged = new Map()
+  const SS_KEY = "ds-map-staged:" + slug
+  const P = { busy: false }
+  var PUT_FIELDS = ["html_zh", "pixso_name", "pixso_guid", "pixso_category", "file_key", "component_content_key", "match_type", "status", "url", "instance_spec"]
+
+  function postParent(msg) { try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, "*") } catch (e) { } }
+  function notifyDirty() { postParent({ type: "ds-dirty", dirty: staged.size > 0, count: staged.size }) }
+  function persistStaged() {
+    try {
+      if (!staged.size) { sessionStorage.removeItem(SS_KEY); return }
+      sessionStorage.setItem(SS_KEY, JSON.stringify([...staged.values()]))
+    } catch (e) { }
+  }
+  function restoreStaged() {
+    try {
+      var raw = sessionStorage.getItem(SS_KEY)
+      if (!raw) return
+      var arr = JSON.parse(raw)
+      if (!Array.isArray(arr)) return
+      var names = new Set(components.map(function (x) { return x.name }))
+      for (var i = 0; i < arr.length; i++) {
+        var it = arr[i]
+        if (it && it.component_name && names.has(it.component_name)) staged.set(it.component_name, it)
+      }
+    } catch (e) { }
+  }
+  function rebuildWork() { erows = Object.assign({}, base, Object.fromEntries(staged)) }
+  async function loadBase() {
+    try {
+      var r = await fetch(API + slug + "/mapping")
+      if (r.ok) { var d = await r.json(); base = Object.fromEntries((d.items || []).map(function (x) { return [x.component_name, x] })) }
+    } catch (e) { }
+  }
+  function applyView() { if (applyErows) applyErows(erows); else redraw(); persistStaged(); notifyDirty() }
 
   /* ── guidIndex ── */
   const libIdx = new Map()
@@ -76,14 +123,6 @@ export async function editSetup(ctx) {
   function dlgFoot() { return root.querySelector(".em-dlg-foot") }
   function setBody(html) { const b = dlgBody(); if (b) b.innerHTML = html }
   function setFoot(html) { const f = dlgFoot(); if (f) f.innerHTML = html }
-
-  async function reloadEROWS() {
-    try {
-      const r = await fetch(API + slug + "/mapping")
-      if (r.ok) { const d = await r.json(); erows = Object.fromEntries((d.items || []).map(x => [x.component_name, x])) }
-    } catch (e) { }
-  }
-  async function refresh() { await reloadEROWS(); redraw() }
 
   main.addEventListener("click", e => {
     if (e.target.closest("[data-em-wizard]")) { void openWizard(); return }
@@ -251,10 +290,10 @@ export async function editSetup(ctx) {
     if (!lib) return
     W.err = ""
     showMatching()
+    /* 暂存模型：匹配阶段零后端写入——sync 推迟到发布时（publish 内 400→sync→重试兜底） */
     Promise.all([
       fetchLibraryComponents(lib.id),
       new Promise(function (r) { setTimeout(r, 1200) }),
-      (async function () { try { var r = await fetch(API + slug + "/mapping/sync", { method: "POST" }); if (!r.ok) console.warn("[edit] sync 返回 HTTP " + r.status); await reloadEROWS() } catch (e) { console.warn("[edit] sync 失败:", e.message) } })(),
     ]).then(function (arr) {
       var full = arr[0]
       var candidates = buildCandidates(full.components)
@@ -265,7 +304,7 @@ export async function editSetup(ctx) {
           return { component_name: m.component_name, pixso_name: ex.pixso_name, pixso_guid: ex.pixso_guid, pixso_category: ex.pixso_category || "", match_type: ex.match_type, status: ex.status || "aligned", url: ex.url || "", fileKey: ex.file_key || "", spec: null, contentKey: null, kept: true, changed: false }
         }
         var set = m.kind === "set" && m.pixso_name ? candidates.sets.get(m.pixso_name) : null
-        return { component_name: m.component_name, pixso_name: m.pixso_name, pixso_guid: m.pixso_guid, pixso_category: m.pixso_category, match_type: m.match_type, status: m.status, url: m.pixso_guid && full.fileKey ? PIXSO_URL_BASE + "/design/" + full.fileKey + "?item-id=" + m.pixso_guid : "", fileKey: full.fileKey || "", spec: set ? buildInstanceSpec(set.variants) : null, contentKey: set ? set.contentKey : null, kept: false, changed: !!m.pixso_guid && (ex && ex.pixso_guid !== m.pixso_guid || (m.kind === "set" && !(ex && ex.instance_spec))) }
+        return { component_name: m.component_name, pixso_name: m.pixso_name, pixso_guid: m.pixso_guid, pixso_category: m.pixso_category, match_type: m.match_type, status: m.status, url: m.pixso_guid && full.fileKey ? PIXSO_URL_BASE + "/design/" + full.fileKey + "?item-id=" + m.pixso_guid : "", fileKey: full.fileKey || "", spec: set ? buildInstanceSpec(set.variants) : null, contentKey: set ? set.contentKey : null, kept: false, changed: !!m.pixso_guid && (!ex || ex.pixso_guid !== m.pixso_guid || (m.kind === "set" && !ex.instance_spec)) }
       })
       W.matchLib = full; W.stage = "result"; W.tab = "all"
       showResult()
@@ -280,26 +319,14 @@ export async function editSetup(ctx) {
       return o
     })
     if (!items.length) { closeWiz(); return }
-    W.saving = true; W.err = ""
-    setFoot('<span class="spacer"></span><button class="em-btn" disabled>取消</button><button class="em-btn em-btn-primary" disabled>保存中...</button>')
-    var doPut = function () {
-      return fetch(API + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: items }) })
-    }
-    /* 400 = 映射表无行（sync 静默失败或无 index.json）→ 先 sync 再重试 PUT */
-    doPut().then(function (res) {
-      if (res.status === 400) {
-        return fetch(API + slug + "/mapping/sync", { method: "POST" }).catch(function () { }).then(doPut)
-      }
-      return res
-    }).then(function (res) {
-      if (!res.ok) return res.json().catch(function () { return null }).then(function (b) { throw new Error("HTTP " + res.status + (b && b.detail ? "：" + b.detail : "")) })
-      closeWiz(); return refresh()
-    }).catch(function (e) {
-      W.err = "保存失败：" + e.message; W.saving = false
-      setFoot('<span class="em-dlg-err">' + esc(W.err) + '</span><span class="spacer"></span><button class="em-btn" data-em-wiz-close>取消</button><button class="em-btn em-btn-primary" data-em-confirm>确定</button>')
-      dlgFoot().querySelector("[data-em-wiz-close]").addEventListener("click", closeWiz)
-      dlgFoot().querySelector("[data-em-confirm]").addEventListener("click", function () { confirmMatch() })
+    /* 暂存：不 PUT——写 staged 层，工作态即时上屏（宿主发布按钮亮起），发布时统一提交 */
+    items.forEach(function (o) {
+      var prev = erows[o.component_name] || { component_name: o.component_name }
+      staged.set(o.component_name, Object.assign({}, prev, o))
     })
+    closeWiz()
+    rebuildWork()
+    applyView()
   }
 
   /* ═════ 编辑组件弹窗 ═════ */
@@ -428,8 +455,6 @@ export async function editSetup(ctx) {
   function confirmEdit() {
     var c = Ed.comp
     if (!c) return
-    Ed.saving = true; Ed.err = ""
-    setFoot('<span class="spacer"></span><button class="em-btn" disabled>取消</button><button class="em-btn em-btn-primary" disabled>保存中...</button>')
     var item = { component_name: c.name, html_zh: Ed.zh.trim(), match_type: "manual" }
     if (Ed.url.trim()) {
       item.url = Ed.url.trim()
@@ -441,20 +466,81 @@ export async function editSetup(ctx) {
         item.status = "aligned"
       }
     }
-    var doPut = function () {
-      return fetch(API + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: [item] }) })
-    }
-    doPut().then(function (res) {
-      if (res.status === 400) {
-        return fetch(API + slug + "/mapping/sync", { method: "POST" }).catch(function () { }).then(doPut)
-      }
-      return res
-    }).then(function (res) {
-      if (!res.ok) return res.json().catch(function () { return null }).then(function (b) { throw new Error("HTTP " + res.status + (b && b.detail ? "：" + b.detail : "")) })
-      closeEdit(); return refresh()
-    }).catch(function (e) {
-      Ed.err = "保存失败：" + e.message; Ed.saving = false
-      fillEditFoot()
-    })
+    /* 暂存：不 PUT——写 staged 层（manual 通道），工作态即时上屏，发布时统一提交 */
+    var prev = erows[c.name] || { component_name: c.name }
+    staged.set(c.name, Object.assign({}, prev, item))
+    closeEdit()
+    rebuildWork()
+    applyView()
   }
+
+  /* ═══ 发布 / 放弃（宿主顶部按钮经 postMessage 触发） ═══ */
+
+  async function publish() {
+    if (P.busy) return
+    if (!staged.size) { postParent({ type: "ds-publish-result", ok: true, stats: {}, dropped: [] }); return }
+    P.busy = true
+    postParent({ type: "ds-publishing" })
+    var dropped = []
+    try {
+      await loadBase() /* 发布预检：按最新表过滤暂存行，防单行缺失导致整批 400 */
+      var items = [], r = null, retried = false
+      for (;;) {
+        items = []; dropped = []
+        staged.forEach(function (row, name) {
+          if (!base[name]) { dropped.push(name); return }
+          var o = { component_name: name }
+          PUT_FIELDS.forEach(function (f) { if (row[f] !== undefined && row[f] !== null) o[f] = row[f] })
+          items.push(o)
+        })
+        if (items.length) {
+          r = await fetch(API + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: items }) })
+          if (r.status !== 400 || retried) break
+        }
+        if (retried) break
+        /* 表无行（PUT 400 或预检 items 为空——老系统未 sync；暂存模型下 sync 已推迟至此）
+         * → sync 重建表 → 刷新 base → 重建 items 重试一次；sync 后仍缺失的行进 dropped */
+        retried = true
+        try { await fetch(API + slug + "/mapping/sync", { method: "POST" }) } catch (e) { }
+        await loadBase()
+      }
+      if (!r) throw new Error("暂存的 " + dropped.length + " 个组件均不在映射表中（组件包未上传或清单已变化），可点「放弃修改」清除")
+      if (!r.ok) {
+        var b = null; try { b = await r.json() } catch (e) { }
+        throw new Error("HTTP " + r.status + (b && b.detail ? "：" + b.detail : ""))
+      }
+      var stats = {}; try { stats = await r.json() } catch (e) { }
+      items.forEach(function (o) { staged.delete(o.component_name) }) /* 已提交行出暂存；dropped 行保留待用户处置 */
+      await loadBase()
+      rebuildWork()
+      applyView()
+      postParent({ type: "ds-publish-result", ok: true, stats: stats, dropped: dropped })
+    } catch (e) {
+      postParent({ type: "ds-publish-result", ok: false, error: e && e.message ? e.message : String(e), dropped: dropped })
+    } finally {
+      P.busy = false
+    }
+  }
+
+  function discard() {
+    if (P.busy) return
+    staged.clear()
+    rebuildWork()
+    applyView()
+    postParent({ type: "ds-discard-done" })
+  }
+
+  /* 宿主 → iframe：ds-publish 触发发布 / ds-discard 触发放弃 */
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return
+    var d = e.data
+    if (!d) return
+    if (d.type === "ds-publish") void publish()
+    else if (d.type === "ds-discard") discard()
+  })
+
+  /* boot：恢复暂存（sessionStorage，按组件名单修剪）→ 工作态上屏 → 报告宿主 dirty 状态 */
+  restoreStaged()
+  if (staged.size) { rebuildWork(); applyView() }
+  else notifyDirty()
 }

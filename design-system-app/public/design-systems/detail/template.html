@@ -1199,7 +1199,10 @@ let D;
 /* ---- 组件 ↔ Pixso 映射（v4.4：design-system.json 自带 mapping/mappingLibraryName 键，零额外请求；
         无键（存量系统/未匹配）→ MAPPING=null → 组件表保持两列） ---- */
 let MAPPING=DS.mapping&&typeof DS.mapping==="object"?DS.mapping:null;
-if(EDIT&&Object.keys(EROWS).length){MAPPING={};for(const[n,r]of Object.entries(EROWS))MAPPING[n]={pixso_name:r.pixso_name,pixso_guid:r.pixso_guid,url:r.url,status:r.status}}
+/* 编辑模式：EROWS（DB 行 + edit-mode 暂存层的工作态）为唯一渲染数据源——setErows 重建 MAPPING，
+   经 ctx.applyErows 暴露给 edit-mode（暂存/发布后即时重画组件栏；修 PUT 后表格不刷新的存量问题） */
+function setErows(rows){EROWS=rows||{};if(!EDIT)return;MAPPING={};for(const[n,r]of Object.entries(EROWS))MAPPING[n]={pixso_name:r.pixso_name,pixso_guid:r.pixso_guid,url:r.url,status:r.status}}
+setErows(EROWS);
 const LIB_NAME=DS.mappingLibraryName||"";
 
 /* ---- 组件预览里的 Token 变量：按 token.json 生成并注入每个预览 iframe，改 token.json 后预览同步变化 ---- */
@@ -1327,7 +1330,7 @@ $(".dsd-nav").onclick=e=>{const t=e.target.closest("[data-toggle-sub]");if(t){t.
 main.onscroll=()=>{if(main.dataset.lock)return;const top=main.scrollTop+80;let cur=SECTIONS[0][0];SECTIONS.forEach(([k])=>{if(off($("#sec-"+k))<=top)cur=k});setNav(cur)};
  $$(".cp-frame").forEach(f=>{f.addEventListener("load",()=>live(f));live(f)});
  /* 编辑模式：动态加载向导 + 编辑弹窗逻辑（查看路由零开销） */
- if(EDIT)import("./edit-mode.js").then(m=>m.editSetup({slug:SLUG,components:D.components,erows:EROWS,redraw:()=>draw("components"),main,esc,icon,res,apiBase:API_BASE_STR})).catch(e=>console.warn("[edit] edit-mode:",e));
+  if(EDIT)import("./edit-mode.js").then(m=>m.editSetup({slug:SLUG,components:D.components,erows:EROWS,applyErows:rows=>{setErows(rows);draw("components")},redraw:()=>draw("components"),main,esc,icon,res,apiBase:API_BASE_STR})).catch(e=>console.warn("[edit] edit-mode:",e));
  const h=location.hash.slice(1);go(SECTIONS.some(s=>s[0]===h)?h:"overview",false);
  }
 
