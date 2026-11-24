@@ -67,7 +67,7 @@ export default function EditMappingPage(): JSX.Element {
   const onBeforeUnload = (e: BeforeUnloadEvent) => {
     if (dirty()) { e.preventDefault(); e.returnValue = "" }
   }
-  const canLeave = () => !dirty() || window.confirm("有未发布的关联修改，离开将丢失（暂存仅保存在当前标签页），确定离开？")
+  const canLeave = () => !dirty() || window.confirm("有未发布的关联修改尚未保存到后端，离开将丢失，确定离开？")
 
   const doPublish = () => {
     if (!dirty() || pubState() === "busy") return

@@ -2,12 +2,13 @@
   * 渲染策略：弹窗骨架一次创建，交互用局部 DOM 更新（class toggle / 局部 HTML），避免闪烁。
   * 模板字面量嵌套 ≤ 2 层，复杂 HTML 用辅助函数构建。
   *
-  * 暂存-发布模型（v2）：
-  * - confirmMatch / confirmEdit 不再立即 PUT——修改写入本地暂存层 staged（sessionStorage 持久化），
-  *   表格经 ctx.applyErows 即时重渲染，宿主「确认发布」按钮亮起（postMessage ds-dirty）；
-  * - 宿主点发布 → postMessage ds-publish → publish() 一次 PUT 全量暂存行（400→sync→重试兜底）；
-  * - 匹配阶段零后端写入（sync 推迟到发布时触发）。
-  */
+ * 暂存-发布模型（v2）：
+ * - confirmMatch / confirmEdit 不再立即 PUT——修改写入内存暂存层 staged（纯内存不持久化：
+ *   刷新/关闭页面即清空，只有点「确认发布」落库的数据才能在刷新后存在），
+ *   表格经 ctx.applyErows 即时重渲染，宿主「确认发布」按钮亮起（postMessage ds-dirty）；
+ * - 宿主点发布 → postMessage ds-publish → publish() 一次 PUT 全量暂存行（400→sync→重试兜底）；
+ * - 匹配阶段零后端写入（sync 推迟到发布时触发）；boot 时清理旧版遗留的 sessionStorage 暂存键。
+ */
 
 /* Pixso 跳转链接拼接模板：{PIXSO_URL_BASE}/design/{fileKey}?item-id={guid}
  * - PIXSO_URL_BASE：Pixso 端地址（demo = 本地桌面端 3667；换环境只改这里）
@@ -79,36 +80,16 @@ export async function editSetup(ctx) {
 
   /* ── 暂存层 ──
    * base   = GET /mapping 服务端快照（发布成功后刷新）
-   * staged = Map<name, row> 暂存覆盖层（confirmMatch/confirmEdit 写入，sessionStorage 跨刷新）
+   * staged = Map<name, row> 内存暂存覆盖层（confirmMatch/confirmEdit 写入；不持久化，刷新即清空）
    * erows  = 工作态 base⊕staged —— 表格渲染 / 向导 kept 基线 / 编辑弹窗回填统一读它 */
   let base = ctx.erows || {}
   let erows = base
   const staged = new Map()
-  const SS_KEY = "ds-map-staged:" + slug
   const P = { busy: false }
   var PUT_FIELDS = ["html_zh", "pixso_name", "pixso_guid", "pixso_category", "file_key", "component_content_key", "match_type", "status", "url", "instance_spec", "thumbnail_url"]
 
   function postParent(msg) { try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, "*") } catch (e) { } }
   function notifyDirty() { postParent({ type: "ds-dirty", dirty: staged.size > 0, count: staged.size }) }
-  function persistStaged() {
-    try {
-      if (!staged.size) { sessionStorage.removeItem(SS_KEY); return }
-      sessionStorage.setItem(SS_KEY, JSON.stringify([...staged.values()]))
-    } catch (e) { }
-  }
-  function restoreStaged() {
-    try {
-      var raw = sessionStorage.getItem(SS_KEY)
-      if (!raw) return
-      var arr = JSON.parse(raw)
-      if (!Array.isArray(arr)) return
-      var names = new Set(components.map(function (x) { return x.name }))
-      for (var i = 0; i < arr.length; i++) {
-        var it = arr[i]
-        if (it && it.component_name && names.has(it.component_name)) staged.set(it.component_name, it)
-      }
-    } catch (e) { }
-  }
   function rebuildWork() { erows = Object.assign({}, base, Object.fromEntries(staged)) }
   async function loadBase() {
     try {
@@ -116,7 +97,24 @@ export async function editSetup(ctx) {
       if (r.ok) { var d = await r.json(); base = Object.fromEntries((d.items || []).map(function (x) { return [x.component_name, x] })) }
     } catch (e) { }
   }
-  function applyView() { if (applyErows) applyErows(erows); else redraw(); persistStaged(); notifyDirty() }
+  function applyView() { if (applyErows) applyErows(erows); else redraw(); notifyDirty() }
+
+  /* 订阅库列表缓存（fileKey → 库名映射用，下拉顶部显示"当前组件库"） */
+  var libListP = fetchSubscribedLibraries().then(function (s) { return s.libraries || [] }).catch(function () { return [] })
+
+  /* 系统共用 file_key：base 已关联行里出现最多的 file_key——系统内组件默认共用一个库，
+   * 取众数兜住个别历史杂值；无已关联行 → null（下拉回退全部订阅库） */
+  function systemFileKey() {
+    var counts = {}, best = null, bestN = 0
+    for (var n in base) {
+      var r = base[n]
+      if (r && r.pixso_guid && r.file_key) {
+        counts[r.file_key] = (counts[r.file_key] || 0) + 1
+        if (counts[r.file_key] > bestN) { bestN = counts[r.file_key]; best = r.file_key }
+      }
+    }
+    return best
+  }
 
   /* ── guidIndex ── */
   const libIdx = new Map()
@@ -158,7 +156,7 @@ export async function editSetup(ctx) {
   }
 
   let W = { stage: "select", libs: [], dom: "", libId: "", q: "", results: [], matchLib: null, tab: "all", saving: false, err: "" }
-  let Ed = { comp: null, zh: "", en: "", url: "", parsed: { fileKey: null, guid: null }, resolved: null, ddOpen: false, ddItems: [], saving: false, err: "" }
+  let Ed = { comp: null, zh: "", en: "", url: "", parsed: { fileKey: null, guid: null }, resolved: null, ddOpen: false, ddItems: [], scopeFk: null, scopeName: "", saving: false, err: "" }
 
   const root = document.createElement("div")
   document.body.appendChild(root)
@@ -389,8 +387,14 @@ export async function editSetup(ctx) {
   /* ═════ 编辑组件弹窗 ═════ */
 
   function openEdit(comp) {
-    Ed = { comp: comp, zh: erows[comp.name] ? erows[comp.name].html_zh || "" : "", en: comp.name, url: erows[comp.name] ? erows[comp.name].url || "" : "", parsed: { fileKey: null, guid: null }, resolved: null, ddOpen: false, ddItems: [], saving: false, err: "" }
+    Ed = { comp: comp, zh: erows[comp.name] ? erows[comp.name].html_zh || "" : "", en: comp.name, url: erows[comp.name] ? erows[comp.name].url || "" : "", parsed: { fileKey: null, guid: null }, resolved: null, ddOpen: false, ddItems: [], scopeFk: null, scopeName: "", saving: false, err: "" }
     onUrlInput(Ed.url)
+    /* 下拉范围（系统组件共用一个 file_key）：行 URL 解析值 → 行自身 file_key → 本次会话
+     * 向导选中的库（W.matchLib，内存态）→ base 众数（系统级共用值）→ null 全库兜底
+     *（从未关联过的新系统）。openEdit 时一次算定：之后清空/粘贴 URL 不再改变下拉范围
+     *（粘贴是显式人工动作，本次不拦）。 */
+    var row = erows[comp.name] || {}
+    Ed.scopeFk = Ed.parsed.fileKey || row.file_key || (W.matchLib && W.matchLib.fileKey) || systemFileKey() || null
     root.innerHTML = '<div class="em-mask" data-em-edit-close><div class="em-dlg em-dlg-edit" onclick="event.stopPropagation()">' +
       '<div class="em-dlg-head"><span class="t">编辑组件</span><button class="em-dlg-x" data-em-edit-close>' + IC.x + "</button></div>" +
       '<div class="em-dlg-body"></div><div class="em-dlg-foot"></div></div></div>'
@@ -414,7 +418,10 @@ export async function editSetup(ctx) {
   function toggleDD() {
     if (Ed.ddOpen) { Ed.ddOpen = false; fillEditDD(); return }
     Ed.ddOpen = true
-    guidIndex(Ed.parsed.fileKey).then(function (idx) {
+    /* 下拉限定在 Ed.scopeFk（openEdit 算定的系统共用 file_key）——选中项同库，
+       切换组件不再漂移 file_key；scope 为 null（从未关联过的新系统）才回退全部订阅库 */
+    Promise.all([guidIndex(Ed.scopeFk), libListP]).then(function (arr) {
+      var idx = arr[0], libs = arr[1] || []
       var seen = new Set(), out = []
       for (var r of idx.values()) {
         if (r.name.indexOf(".") === 0 || r.name.indexOf("TUI-SVG") === 0 || r.name.indexOf("Text-to-UI Icon") === 0) continue
@@ -422,6 +429,10 @@ export async function editSetup(ctx) {
       }
       out.sort(function (a, b) { return a.name.localeCompare(b.name) })
       Ed.ddItems = out
+      /* 下拉顶部"当前组件库"标识：scope 有值 → 订阅列表里查库名（查不到显示 fileKey 本身） */
+      Ed.scopeName = Ed.scopeFk
+        ? ((libs.find(function (l) { return l.fileKey === Ed.scopeFk }) || {}).name || Ed.scopeFk)
+        : ""
       fillEditDD()
     })
   }
@@ -485,7 +496,9 @@ export async function editSetup(ctx) {
       return '<button data-em-dd-pick="' + esc(r.guid) + '" data-em-dd-fk="' + esc(r.fileKey || "") + '" style="width:100%;display:flex;align-items:center;gap:8px;border:0;background:transparent;border-radius:6px;padding:7px 8px;cursor:pointer;text-align:left;font-size:13px;color:var(--text-1);">' + imgHtml + "<span>" + esc(r.name) + "</span></button>"
     }).join("")
     var inner = Ed.ddItems.length ? items : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:12px;">没有可关联的组件</div>'
-    slot.innerHTML = '<div style="position:absolute;top:34px;right:0;width:300px;max-height:264px;overflow:auto;background:#fff;border:1px solid var(--border-1);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:20;padding:6px;">' + inner + "</div>"
+    /* 顶部标识当前限定的组件库（scope 为 null 的全新系统显示"全部订阅库"） */
+    var cap = '<div style="padding:6px 8px 4px;font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">当前组件库：' + esc(Ed.scopeName || "全部订阅库") + "</div>"
+    slot.innerHTML = '<div style="position:absolute;top:34px;right:0;width:300px;max-height:264px;overflow:auto;background:#fff;border:1px solid var(--border-1);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:20;padding:6px;">' + cap + inner + "</div>"
     slot.querySelectorAll("[data-em-dd-pick]").forEach(function (b) {
       b.addEventListener("click", function () {
         var guid = b.dataset.emDdPick
@@ -603,8 +616,15 @@ export async function editSetup(ctx) {
     else if (d.type === "ds-discard") discard()
   })
 
-  /* boot：恢复暂存（sessionStorage，按组件名单修剪）→ 工作态上屏 → 报告宿主 dirty 状态 */
-  restoreStaged()
-  if (staged.size) { rebuildWork(); applyView() }
-  else notifyDirty()
+  /* boot：暂存为纯内存态（刷新即清空，仅发布落库持久化）——顺手清理旧版遗留的
+   * sessionStorage 暂存键（ds-map-staged:*），避免残留缓存难清；然后报告宿主干净态 */
+  try {
+    var legacy = []
+    for (var i = 0; i < sessionStorage.length; i++) {
+      var k = sessionStorage.key(i)
+      if (k && k.indexOf("ds-map-staged:") === 0) legacy.push(k)
+    }
+    legacy.forEach(function (k) { sessionStorage.removeItem(k) })
+  } catch (e) { }
+  notifyDirty()
 }
