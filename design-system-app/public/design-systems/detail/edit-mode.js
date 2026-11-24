@@ -9,17 +9,54 @@
   * - 匹配阶段零后端写入（sync 推迟到发布时触发）。
   */
 
+/* Pixso 跳转链接拼接模板：{PIXSO_URL_BASE}/design/{fileKey}?item-id={guid}
+ * - PIXSO_URL_BASE：Pixso 端地址（demo = 本地桌面端 3667；换环境只改这里）
+ * - fileKey：Pixso 文件 id，来自库明细数据——真实顶层为 snake_case file_key（无顶层时从条目
+ *   file_key 推导），fetchLibraryComponents 已归一化成 lib.fileKey 统一取用
+ * - guid：组件锚点（普通组件 node_id / 组件集 containingStateGroup.nodeId，即匹配命中的 pixso_guid）
+ * 拼接处：runMatch（向导匹配）与 fillEditDD（下拉选组件）两处 */
 const PIXSO_URL_BASE = "http://localhost:3667"
 
 /* 组件库列表：直接 import fetch-subscribe.js（轻量元数据，demo 写死；正式换实现） */
 import { fetchSubscribedLibraries } from "./fetch-subscribe.js"
 
-/* 组件明细数据：点「开始匹配」时按需 HTTP 获取（demo = mock-api 3090；正式换 URL） */
-const PIXSO_COMPONENTS_API = "http://localhost:3090"
-async function fetchLibraryComponents(libId) {
-  const r = await fetch(PIXSO_COMPONENTS_API + "/pixso/libraries/" + libId)
+/* 组件明细数据：点「开始匹配」时按需 HTTP 获取（正式同源网关接口）。
+ * GET /main/rest.root/workspace/pixsoFile/library?fileKey={fileKey}
+ *   请求：uiplusToken 头（登录态 localStorage）+ cookie（credentials:"include"）+ Accept
+ *   响应：信封 {content: "<JSON 字符串>"}——库数据本体被序列化成 JSON 字符串放在 content，
+ *         前端必须二次 JSON.parse 才是对象
+ * 真实明细顶层为 Pixso 文件级结构（snake_case）：team_id/version_id/space_id/file_key/
+ *   components/type/styles/variables——无 name/version/componentCount（向导展示元数据
+ *   走订阅列表 fetch-subscribe，见 runMatch 的 W.matchLib）；
+ *   条目字段：node_id/name/component_key/containing_frame/file_key/thumbnail_url
+ * demo：vite 代理 /main → mock-api(3090)，响应结构按真实剥离（仅 file_key + components） */
+async function fetchLibraryComponents(fileKey) {
+  const r = await fetch("/main/rest.root/workspace/pixsoFile/library?fileKey=" + encodeURIComponent(fileKey), {
+    headers: { uiplusToken: localStorage.getItem("uiplusToken") || "", Accept: "application/json" },
+    credentials: "include",
+  })
   if (!r.ok) throw new Error("HTTP " + r.status)
-  return r.json()
+  const data = await r.json()
+  /* content 双重编码校验：必须是 JSON 字符串且能解析为对象——格式不对给明确报错，不静默炸在调用方 */
+  if (!data || typeof data.content !== "string" || !data.content.trim()) throw new Error("接口未返回有效的 content（应为 JSON 字符串）")
+  var lib
+  try { lib = JSON.parse(data.content) } catch (e) { throw new Error("content 不是合法 JSON：" + e.message) }
+  if (!lib || typeof lib !== "object") throw new Error("content 解析结果不是对象")
+  /* fileKey 归一化成 lib.fileKey 供下游统一消费（runMatch url 拼接 / guidIndex 下拉 / 暂存行 file_key）：
+   * 顶层 fileKey（demo 快照）→ 顶层 file_key（真实）→ 首个条目 file_key 推导，逐级兜底 */
+  lib.fileKey = lib.fileKey || lib.file_key || (Object.values(lib.components || {})[0] || {}).file_key || ""
+  return lib
+}
+
+/* 缩略图完整 URL：thumbnail_url 是图片服务（组件库后端）的相对路径（/ 开头），
+ * 前端经同源 /api 前缀访问——dev 由 vite 代理 /api/static → mock-api:3090，
+ * 生产由网关把 /api 路由到图片服务（图片不在本前端/后端，只通过链接访问）。
+ * 空 → 空串；http(s) 绝对地址原样返回；origin 异常（file:// 独立预览）回落相对值。 */
+function absThumb(u) {
+  if (!u) return ""
+  if (/^https?:\/\//i.test(u)) return u
+  try { var o = window.location.origin; if (o && o.indexOf("http") === 0) return o + "/api" + u } catch (e) { }
+  return u
 }
 
 const IC = {
@@ -38,7 +75,7 @@ export async function editSetup(ctx) {
 
   let MC
   try { MC = await import("./match-core.js") } catch (e) { console.warn("[edit] match-core:", e); return }
-  const { buildCandidates, matchAll, buildInstanceSpec, parsePixsoUrl, pixsoThumb } = MC
+  const { buildCandidates, matchAll, buildInstanceSpec, parsePixsoUrl, pickSetThumb, thumbVal } = MC
 
   /* ── 暂存层 ──
    * base   = GET /mapping 服务端快照（发布成功后刷新）
@@ -49,7 +86,7 @@ export async function editSetup(ctx) {
   const staged = new Map()
   const SS_KEY = "ds-map-staged:" + slug
   const P = { busy: false }
-  var PUT_FIELDS = ["html_zh", "pixso_name", "pixso_guid", "pixso_category", "file_key", "component_content_key", "match_type", "status", "url", "instance_spec"]
+  var PUT_FIELDS = ["html_zh", "pixso_name", "pixso_guid", "pixso_category", "file_key", "component_content_key", "match_type", "status", "url", "instance_spec", "thumbnail_url"]
 
   function postParent(msg) { try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, "*") } catch (e) { } }
   function notifyDirty() { postParent({ type: "ds-dirty", dirty: staged.size > 0, count: staged.size }) }
@@ -92,17 +129,24 @@ export async function editSetup(ctx) {
         const list = snap.libraries || []
         for (const l of (fk ? list.filter(x => x.fileKey === fk) : list)) {
           try {
-            const lib = await fetchLibraryComponents(l.id)
+            const lib = await fetchLibraryComponents(l.fileKey)
             if (!lib) continue
             for (const e of Object.values(lib.components || {})) {
               const cf = e.containing_frame || {}
               const sg = cf.containingStateGroup
               if (sg) {
-                const info = { guid: sg.nodeId, name: sg.name, category: cf.name || "", thumb: e.thumbnail_url || "", fileKey: lib.fileKey || "" }
+                /* 变体：归并到组件集锚点（首个变体建 info，后续变体补充缩略图候选后按 pickSetThumb 重选，
+                   与 buildCandidates 同规则——保证下拉/卡片/弹窗三处图一致） */
+                let info = m.get(sg.nodeId)
+                if (!info) {
+                  info = { guid: sg.nodeId, name: sg.name, category: cf.name || "", thumb: "", vthumbs: [], fileKey: lib.fileKey || "" }
+                  m.set(sg.nodeId, info)
+                }
+                const t = thumbVal(e)
+                if (t) { info.vthumbs.push(t); info.thumb = pickSetThumb(info.vthumbs, info.guid) }
                 if (e.node_id) m.set(e.node_id, info)
-                if (!m.has(sg.nodeId)) m.set(sg.nodeId, info)
               } else if (e.node_id) {
-                m.set(e.node_id, { guid: e.node_id, name: String(e.name || "").split("/")[0], category: cf.name || "", thumb: e.thumbnail_url || "", fileKey: lib.fileKey || "" })
+                m.set(e.node_id, { guid: e.node_id, name: String(e.name || "").split("/")[0], category: cf.name || "", thumb: thumbVal(e), fileKey: lib.fileKey || "" })
               }
             }
           } catch (e) { }
@@ -292,7 +336,7 @@ export async function editSetup(ctx) {
     showMatching()
     /* 暂存模型：匹配阶段零后端写入——sync 推迟到发布时（publish 内 400→sync→重试兜底） */
     Promise.all([
-      fetchLibraryComponents(lib.id),
+      fetchLibraryComponents(lib.fileKey),
       new Promise(function (r) { setTimeout(r, 1200) }),
     ]).then(function (arr) {
       var full = arr[0]
@@ -301,12 +345,24 @@ export async function editSetup(ctx) {
       W.results = ms.map(function (m) {
         var ex = erows[m.component_name]
         if (ex && ex.pixso_guid && (ex.match_type === "manual" || !m.pixso_guid)) {
-          return { component_name: m.component_name, pixso_name: ex.pixso_name, pixso_guid: ex.pixso_guid, pixso_category: ex.pixso_category || "", match_type: ex.match_type, status: ex.status || "aligned", url: ex.url || "", fileKey: ex.file_key || "", spec: null, contentKey: null, kept: true, changed: false }
+          return { component_name: m.component_name, pixso_name: ex.pixso_name, pixso_guid: ex.pixso_guid, pixso_category: ex.pixso_category || "", match_type: ex.match_type, status: ex.status || "aligned", url: ex.url || "", fileKey: ex.file_key || "", thumbnail_url: ex.thumbnail_url || null, spec: null, contentKey: null, kept: true, changed: false }
         }
         var set = m.kind === "set" && m.pixso_name ? candidates.sets.get(m.pixso_name) : null
-        return { component_name: m.component_name, pixso_name: m.pixso_name, pixso_guid: m.pixso_guid, pixso_category: m.pixso_category, match_type: m.match_type, status: m.status, url: m.pixso_guid && full.fileKey ? PIXSO_URL_BASE + "/design/" + full.fileKey + "?item-id=" + m.pixso_guid : "", fileKey: full.fileKey || "", spec: set ? buildInstanceSpec(set.variants) : null, contentKey: set ? set.contentKey : null, kept: false, changed: !!m.pixso_guid && (!ex || ex.pixso_guid !== m.pixso_guid || (m.kind === "set" && !ex.instance_spec)) }
+        return {
+          component_name: m.component_name, pixso_name: m.pixso_name, pixso_guid: m.pixso_guid, pixso_category: m.pixso_category, match_type: m.match_type, status: m.status,
+          /* Pixso 跳转链接拼接处（模板见文件头 PIXSO_URL_BASE 注释）：fileKey 来自组件库清单，guid 为命中锚点 */
+          url: m.pixso_guid && full.fileKey ? PIXSO_URL_BASE + "/design/" + full.fileKey + "?item-id=" + m.pixso_guid : "",
+          fileKey: full.fileKey || "",
+          /* 缩略图：命中候选的 thumbnail_url 原始相对值（渲染时 absThumb 拼 origin+/api 前缀） */
+          thumbnail_url: m.pixso_thumb || null,
+          spec: set ? buildInstanceSpec(set.variants) : null, contentKey: set ? set.contentKey : null, kept: false,
+          /* 已关联但缺缩略图的行重跑匹配也视为有变化——可补上 thumbnail_url */
+          changed: !!m.pixso_guid && (!ex || ex.pixso_guid !== m.pixso_guid || (m.kind === "set" && !ex.instance_spec) || (!ex.thumbnail_url && m.pixso_thumb))
+        }
       })
-      W.matchLib = full; W.stage = "result"; W.tab = "all"
+      /* 结果页库卡片展示元数据（库名/版本/组件数）改读订阅列表条目——真实明细响应顶层
+         无 name/version/componentCount（仅 file_key/components 等），full 只作数据源 */
+      W.matchLib = lib; W.stage = "result"; W.tab = "all"
       showResult()
     }).catch(function (e) { W.err = "匹配失败：" + e.message; W.stage = "select"; fillSelect() })
   }
@@ -316,6 +372,7 @@ export async function editSetup(ctx) {
       var o = { component_name: r.component_name, pixso_name: r.pixso_name, pixso_guid: r.pixso_guid, pixso_category: r.pixso_category || "", file_key: r.fileKey, match_type: r.match_type, status: r.status, url: r.url || "" }
       if (r.spec) o.instance_spec = r.spec
       if (r.contentKey) o.component_content_key = r.contentKey
+      if (r.thumbnail_url) o.thumbnail_url = r.thumbnail_url /* 缩略图原始相对值（暂存行即带，发布时随 PUT 提交） */
       return o
     })
     if (!items.length) { closeWiz(); return }
@@ -407,11 +464,14 @@ export async function editSetup(ctx) {
   function fillEditRoRight() {
     var col = dlgBody() ? dlgBody().querySelector(".em-ro-right") : null
     if (!col) return
-    var name = Ed.resolved ? Ed.resolved.name : erows[Ed.comp ? Ed.comp.name : ""] ? erows[Ed.comp.name].pixso_name : null
-    var guid = Ed.resolved ? Ed.resolved.guid : erows[Ed.comp ? Ed.comp.name : ""] ? erows[Ed.comp.name].pixso_guid : null
+    var row = Ed.comp ? erows[Ed.comp.name] : null
+    var name = Ed.resolved ? Ed.resolved.name : row ? row.pixso_name : null
+    /* 缩略图：选中组件（resolved，guidIndex 已按 pickSetThumb 选好）优先，回落工作态行的 thumbnail_url；
+       渲染经 absThumb 拼 origin+/api 前缀（图片服务的相对路径），加载失败仅隐藏无回落图 */
+    var thumb = Ed.resolved ? Ed.resolved.thumb : row ? row.thumbnail_url : null
     var tag = name ? '<span class="em-tag-ok">已关联</span>' : ""
     var nameHtml = name ? esc(name) : '<span class="em-ro-empty">未关联——粘贴设计组件链接后自动识别</span>'
-    var img = guid ? '<img src="' + esc(pixsoThumb(guid, "-preview")) + '" style="margin-top:10px;width:100%;height:68px;object-fit:contain;border-radius:4px;display:block;" onerror="this.onerror=null;this.src=\'' + esc(pixsoThumb(guid)) + "'\">" : ""
+    var img = thumb ? '<img src="' + esc(absThumb(thumb)) + '" style="margin-top:10px;width:100%;height:68px;object-fit:contain;border-radius:4px;display:block;" onerror="this.style.display=\'none\'">' : ""
     col.innerHTML = '<div class="em-ro-cap"><span>设计组件</span>' + tag + '</div><div class="em-ro-name">' + nameHtml + "</div>" + img
   }
 
@@ -419,8 +479,9 @@ export async function editSetup(ctx) {
     var slot = dlgBody() ? dlgBody().querySelector(".em-dd-slot") : null
     if (!slot) return
     if (!Ed.ddOpen) { slot.innerHTML = ""; return }
+    /* 下拉小图：thumbnail_url 经 absThumb 拼 origin+/api 前缀（与卡片大图同链路） */
     var items = Ed.ddItems.map(function (r) {
-      var imgHtml = r.thumb ? '<img src="' + esc(r.thumb) + '" style="width:36px;height:20px;object-fit:contain;border-radius:3px;flex-shrink:0;background:var(--fill-3);">' : '<span style="width:36px;height:20px;background:var(--fill-3);border-radius:3px;flex-shrink:0;"></span>'
+      var imgHtml = r.thumb ? '<img src="' + esc(absThumb(r.thumb)) + '" style="width:36px;height:20px;object-fit:contain;border-radius:3px;flex-shrink:0;background:var(--fill-3);">' : '<span style="width:36px;height:20px;background:var(--fill-3);border-radius:3px;flex-shrink:0;"></span>'
       return '<button data-em-dd-pick="' + esc(r.guid) + '" data-em-dd-fk="' + esc(r.fileKey || "") + '" style="width:100%;display:flex;align-items:center;gap:8px;border:0;background:transparent;border-radius:6px;padding:7px 8px;cursor:pointer;text-align:left;font-size:13px;color:var(--text-1);">' + imgHtml + "<span>" + esc(r.name) + "</span></button>"
     }).join("")
     var inner = Ed.ddItems.length ? items : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:12px;">没有可关联的组件</div>'
@@ -433,6 +494,7 @@ export async function editSetup(ctx) {
           var r = Ed.ddItems[i]
           if (r.guid === guid && r.fileKey === fk) {
             Ed.ddOpen = false
+            /* Pixso 跳转链接拼接处（模板见文件头 PIXSO_URL_BASE 注释）：下拉选中组件的 fileKey + guid */
             var url = PIXSO_URL_BASE + "/design/" + (r.fileKey || fk) + "?item-id=" + r.guid
             var input = dlgBody().querySelector("[data-em-url]")
             if (input) input.value = url
@@ -466,6 +528,8 @@ export async function editSetup(ctx) {
         item.status = "aligned"
       }
     }
+    /* 缩略图随选中组件拷贝（guidIndex 已按 pickSetThumb 规则选好；空值覆盖旧值防串图） */
+    if (Ed.resolved) item.thumbnail_url = Ed.resolved.thumb || ""
     /* 暂存：不 PUT——写 staged 层（manual 通道），工作态即时上屏，发布时统一提交 */
     var prev = erows[c.name] || { component_name: c.name }
     staged.set(c.name, Object.assign({}, prev, item))

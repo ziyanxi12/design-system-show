@@ -88,7 +88,11 @@ const items = results.map(r => {
     file_key: lib.fileKey,
     match_type: r.match_type,
     status: r.status,
+    /* Pixso 跳转链接拼接：{URL_BASE}/design/{fileKey}?item-id={guid}——URL_BASE 为 Pixso 端地址
+       （顶部常量），fileKey 来自组件库清单，guid 为命中组件（集）锚点 */
     url: URL_BASE ? `${URL_BASE}/design/${lib.fileKey}?item-id=${r.pixso_guid}` : "",
+    /* 缩略图：命中候选的 thumbnail_url 原始相对路径（渲染端拼 origin+/api 前缀访问图片服务） */
+    ...(r.pixso_thumb ? { thumbnail_url: r.pixso_thumb } : {}),
     ...(spec ? { instance_spec: spec } : {}),
     ...(set && set.contentKey ? { component_content_key: set.contentKey } : {}),
   }

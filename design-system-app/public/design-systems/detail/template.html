@@ -1201,7 +1201,7 @@ let D;
 let MAPPING=DS.mapping&&typeof DS.mapping==="object"?DS.mapping:null;
 /* 编辑模式：EROWS（DB 行 + edit-mode 暂存层的工作态）为唯一渲染数据源——setErows 重建 MAPPING，
    经 ctx.applyErows 暴露给 edit-mode（暂存/发布后即时重画组件栏；修 PUT 后表格不刷新的存量问题） */
-function setErows(rows){EROWS=rows||{};if(!EDIT)return;MAPPING={};for(const[n,r]of Object.entries(EROWS))MAPPING[n]={pixso_name:r.pixso_name,pixso_guid:r.pixso_guid,url:r.url,status:r.status}}
+function setErows(rows){EROWS=rows||{};if(!EDIT)return;MAPPING={};for(const[n,r]of Object.entries(EROWS))MAPPING[n]={pixso_name:r.pixso_name,pixso_guid:r.pixso_guid,url:r.url,status:r.status,thumbnail_url:r.thumbnail_url}}
 setErows(EROWS);
 const LIB_NAME=DS.mappingLibraryName||"";
 
@@ -1268,9 +1268,12 @@ const groupsOf=list=>[...new Set(list.map(gkey))].map(g=>({g,items:list.filter(x
 /* 源规范没给分类时条目 group 为空（目录直接是 <英文名>/），网站上不显示分类这一层 */
 const isFlat=list=>list.length>0&&list.every(x=>gkey(x)==="");
 const nameHtml=x=>`<span class="component-name-cn">${esc(x.name)}</span>`;
-/* 映射第三格「关联设计组件」卡片：小标题/蓝色可点组件名/来源行/多变体预览图；未关联 → 灰卡 */
-const THUMB_BASE="/static/design-systems/pixso-thumbs";
-const mapThumb=(guid,suffix)=>guid?`${THUMB_BASE}/${String(guid).replace(/:/g,"-")}${suffix||""}.png`:"";
+/* 映射第三格「关联设计组件」卡片：小标题/蓝色可点组件名/来源行/缩略图；未关联 → 灰卡 */
+/* 缩略图完整 URL：thumbnail_url 是图片服务（组件库后端）的相对路径（/ 开头），
+   前端经同源 /api 前缀访问——dev 由 vite 代理 /api/static → mock-api:3090，
+   生产由网关路由到图片服务（图片只通过链接访问，不在本前端/后端存储）。
+   空→空串；http(s) 绝对地址原样；origin 异常（file:// 独立预览）回落相对值 */
+const absThumb=u=>{if(!u)return"";if(/^https?:\/\//i.test(u))return u;try{const o=location.origin;if(o&&o.indexOf("http")===0)return o+"/api"+u}catch(e){}return u};
 function mapColHtml(x){const m=MAPPING&&MAPPING[x.name];if(!m)return"";
  if(!m.pixso_name)return `<div class="ct-map none"><div class="ct-map-h"><b>未关联 Pixso 组件<\/b><\/div><div class="ct-map-note">关联后可在生成设计稿时使用对应组件实例<\/div><\/div>`;
  const name=m.pixso_name;
@@ -1278,7 +1281,7 @@ function mapColHtml(x){const m=MAPPING&&MAPPING[x.name];if(!m)return"";
  return `<div class="ct-map-card">`+
   `<div class="ct-map-cap">关联设计组件<\/div>`+nameHtml2+
   `<div class="ct-map-src">${esc(LIB_NAME||"")}<\/div>`+
-  (m.pixso_guid?`<img class="ct-map-preview" src="${esc(mapThumb(m.pixso_guid,"-preview"))}" alt="${esc(name)}" loading="lazy" onerror="this.onerror=null;this.src='${esc(mapThumb(m.pixso_guid))}'">`:"")+
+  (m.thumbnail_url?`<img class="ct-map-preview" src="${esc(absThumb(m.thumbnail_url))}" alt="${esc(name)}" loading="lazy" onerror="this.style.display='none'">`:"")+
   `<\/div>`}
 /* 编辑模式关联列：编辑路由下强制渲染（MAPPING 已从 EROWS 构建，无行 → 未关联灰卡） */
 const editMapColHtml=x=>mapColHtml(x)||`<div class="ct-map none"><div class="ct-map-h"><b>未关联 Pixso 组件<\/b><\/div><div class="ct-map-note">关联后可在生成设计稿时使用对应组件实例<\/div><\/div>`;

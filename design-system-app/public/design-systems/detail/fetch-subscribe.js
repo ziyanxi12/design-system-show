@@ -1,7 +1,8 @@
 /* fetch-subscribe.js —— 订阅组件库列表获取（前端模块，浏览器兼容）
  *
  * 职责：只提供库列表元数据（不含组件明细）。edit-mode.js 打开向导时直接 import 调用。
- * 组件明细数据：edit-mode.js 在用户点「开始匹配」时通过 HTTP API 按需获取（见 edit-mode.js 的 PIXSO_COMPONENTS_API）。
+ * 组件明细数据：edit-mode.js 在用户点「开始匹配」时按 fileKey 走网关接口按需获取
+ * （GET /main/rest.root/workspace/pixsoFile/library?fileKey=…，见 edit-mode.js 的 fetchLibraryComponents）。
  *
  * demo 实现：fetchSubscribedLibraries() 直接返回写死的库列表。
  * 正式环境：替换函数体为真实获取，接口与输出结构不变。

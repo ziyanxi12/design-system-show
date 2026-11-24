@@ -42,6 +42,32 @@ function isNoise(name) {
 }
 
 /**
+ * 组件条目的缩略图取值：thumbnail_url 原样返回；空 / placeholder 占位 → ""（不参与拷贝渲染）。
+ * thumbnail_url 是图片服务（组件库后端）的相对路径（/ 开头，如 /static/design-systems/pixso-thumbs/222-400.png），
+ * 前端渲染时拼 window.location.origin + "/api" 前缀访问。
+ */
+export function thumbVal(entry) {
+  const t = String((entry && entry.thumbnail_url) || "");
+  return t && t.indexOf("placeholder") < 0 ? t : "";
+}
+
+/**
+ * 组件集缩略图选图规则（buildCandidates 与 edit-mode guidIndex 共用，保证卡片/下拉/弹窗三处图一致）：
+ * 变体条目的 thumbnail_url 优先取「指向集锚点图」的（值含 {锚点 guid 去冒号}.png，如 19-1378.png），
+ * 没有则取首个非空——集锚点本身不是 components 的 key，只能从变体条目里挑。
+ *
+ * @param {string[]} variantThumbs 变体条目的 thumbnail_url 列表（已过滤 placeholder）
+ * @param {string} anchorGuid 组件集锚点 guid（containingStateGroup.nodeId，如 "19:1378"）
+ * @returns {string} 选中的缩略图相对路径（无候选 → ""）
+ */
+export function pickSetThumb(variantThumbs, anchorGuid) {
+  const list = (variantThumbs || []).filter(Boolean);
+  if (!list.length) return "";
+  const anchor = String(anchorGuid || "").replace(/:/g, "-") + ".png";
+  return list.find((t) => t.indexOf(anchor) >= 0) || list[0];
+}
+
+/**
  * 候选构建：把 Pixso 组件库的原始清单（guid 为 key）整理成可匹配的候选池。
  *
  * 处理规则：
@@ -52,13 +78,13 @@ function isNoise(name) {
  *   噪音过滤：`.` 前缀 / TUI-SVG / Text-to-UI Icon 开头的 → 跳过
  *
  * @param {Record<string, Object>} components 组件库清单（guid 为 key）
- * @returns {{ sets: Map<string, {guid, category, variants, contentKey}>, plains: Map<string, {guid, category}> }}
- *   sets：   集名 → { guid: 集锚点 nodeId, category: 分类, variants: 变体名列表, contentKey: 内容 hash }
- *   plains： 组件名 → { guid: node_id, category: 分类 }
+ * @returns {{ sets: Map<string, {guid, category, variants, contentKey, thumb}>, plains: Map<string, {guid, category, thumb}> }}
+ *   sets：   集名 → { guid: 集锚点 nodeId, category: 分类, variants: 变体名列表, contentKey: 内容 hash, thumb: 集缩略图 }
+ *   plains： 组件名 → { guid: node_id, category: 分类, thumb: 缩略图 }
  */
 export function buildCandidates(components) {
-  const sets = new Map();   // 组件集：集名 → { guid, category, variants[], contentKey }
-  const plains = new Map(); // 普通组件：名字首段 → { guid, category }
+  const sets = new Map();   // 组件集：集名 → { guid, category, variants[], contentKey, vthumbs[], thumb }
+  const plains = new Map(); // 普通组件：名字首段 → { guid, category, thumb }
   for (const x of Object.values(components || {})) {
     const cf = x.containing_frame || {};
     const sg = cf.containingStateGroup; // 有 containingStateGroup → 变体，无 → 普通组件
@@ -67,18 +93,22 @@ export function buildCandidates(components) {
       /* 变体：归并到所属组件集（按集名去重，集 guid = containingStateGroup.nodeId） */
       let s = sets.get(sg.name);
       if (!s) {
-        s = { guid: sg.nodeId, category: cf.name || "", variants: [], contentKey: x.component_key || null };
+        s = { guid: sg.nodeId, category: cf.name || "", variants: [], contentKey: x.component_key || null, vthumbs: [], thumb: "" };
         sets.set(sg.name, s);
       }
-      /* 收集每个变体的名字（instance_spec 生成用） */
+      /* 收集每个变体的名字（instance_spec 生成用）与缩略图（集选图规则见 pickSetThumb） */
       if (x.name) s.variants.push(String(x.name));
+      const t = thumbVal(x);
+      if (t) s.vthumbs.push(t);
     } else {
       /* 普通组件：取名字首段（"/" 前部分）作为候选名 */
       const first = String(x.name || "").split("/")[0];
       if (!first || isNoise(first)) continue; // 噪音跳过
-      if (!plains.has(first)) plains.set(first, { guid: x.node_id, category: cf.name || "" });
+      if (!plains.has(first)) plains.set(first, { guid: x.node_id, category: cf.name || "", thumb: thumbVal(x) });
     }
   }
+  /* 组件集缩略图：变体候选里选（锚点图优先） */
+  for (const s of sets.values()) s.thumb = pickSetThumb(s.vthumbs, s.guid);
 
   /* 调试：打印候选池（浏览器 console + Node CLI 均可看到） */
   console.log("[match-core] 候选池：" + sets.size + " 个组件集 + " + plains.size + " 个普通组件 = " + (sets.size + plains.size) + " 个候选");
@@ -107,6 +137,7 @@ export function buildCandidates(components) {
  *   component_name: "Button",       ← 本地组件名（join 键）
  *   pixso_name: "Button" | null,   ← 匹配到的 Pixso 候选名
  *   pixso_guid: "19:1378" | null,  ← Pixso 组件集/普通组件的 guid（锚点）
+ *   pixso_thumb: "/static/..." | null, ← 命中候选的缩略图相对路径（渲染时拼 origin+/api 前缀）
  *   pixso_category: "操作类" | "",  ← Pixso 侧分类
  *   match_type: "exact"|"fuzzy"|null,
  *   status: "aligned"|"partial"|"missing",
@@ -122,14 +153,14 @@ export function matchAll(htmlNames, candidates) {
     for (const [store, kind] of [[candidates.sets, "set"], [candidates.plains, "plain"]]) {
       for (const [pname, info] of store) {
         if (!used.has(pname) && name === pname)
-          return { pixso_name: pname, pixso_guid: info.guid, pixso_category: info.category, match_type: "exact", status: "aligned", kind };
+          return { pixso_name: pname, pixso_guid: info.guid, pixso_thumb: info.thumb || null, pixso_category: info.category, match_type: "exact", status: "aligned", kind };
       }
     }
     /* L2 归一化匹配：去 -_ 与空白后转小写比对（处理大小写/分隔符差异） */
     for (const [store, kind] of [[candidates.sets, "set"], [candidates.plains, "plain"]]) {
       for (const [pname, info] of store) {
         if (!used.has(pname) && norm(name) === norm(pname))
-          return { pixso_name: pname, pixso_guid: info.guid, pixso_category: info.category, match_type: "fuzzy", status: "partial", kind };
+          return { pixso_name: pname, pixso_guid: info.guid, pixso_thumb: info.thumb || null, pixso_category: info.category, match_type: "fuzzy", status: "partial", kind };
       }
     }
     /* L3 英文提取匹配：去中文等非 ASCII 后比对（处理「按钮 Button」混合名 → 提取 "button"） */
@@ -138,7 +169,7 @@ export function matchAll(htmlNames, candidates) {
       for (const [store, kind] of [[candidates.sets, "set"], [candidates.plains, "plain"]]) {
         for (const [pname, info] of store) {
           if (!used.has(pname) && enName === en(pname))
-            return { pixso_name: pname, pixso_guid: info.guid, pixso_category: info.category, match_type: "fuzzy", status: "partial", kind };
+            return { pixso_name: pname, pixso_guid: info.guid, pixso_thumb: info.thumb || null, pixso_category: info.category, match_type: "fuzzy", status: "partial", kind };
         }
       }
     }
@@ -152,7 +183,7 @@ export function matchAll(htmlNames, candidates) {
     return {
       component_name: name,
       /* 命中 → 展开匹配详情；未命中 → 全空 + missing */
-      ...(m || { pixso_name: null, pixso_guid: null, pixso_category: "", match_type: null, status: "missing", kind: null }),
+      ...(m || { pixso_name: null, pixso_guid: null, pixso_thumb: null, pixso_category: "", match_type: null, status: "missing", kind: null }),
     };
   });
 }
@@ -219,12 +250,4 @@ export function parsePixsoUrl(url) {
     /* 非法 URL 静默回落 */
   }
   return out;
-}
-
-/**
- * Pixso 缩略图 URL：guid 去冒号（19:1378 → 19-1378）。
- * suffix "-preview" = 多变体拼合预览图（编辑页卡片大图），无后缀 = 单图。
- */
-export function pixsoThumb(guid, suffix = "") {
-  return guid ? `/static/design-systems/pixso-thumbs/${String(guid).replace(/:/g, "-")}${suffix}.png` : "";
 }
