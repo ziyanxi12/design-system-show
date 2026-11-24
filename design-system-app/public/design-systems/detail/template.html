@@ -1197,7 +1197,7 @@ let D;
  const T=D.tokens;
 
 /* ---- 组件 ↔ Pixso 映射（v4.4：design-system.json 自带 mapping/mappingLibraryName 键，零额外请求；
-        无键（存量系统/未匹配）→ MAPPING=null → 组件表保持两列） ---- */
+        无键（存量系统/未发布）→ MAPPING=null → 组件表仍恒三列，未关联行渲染灰卡（mapColAuto）） ---- */
 let MAPPING=DS.mapping&&typeof DS.mapping==="object"?DS.mapping:null;
 /* 编辑模式：EROWS（DB 行 + edit-mode 暂存层的工作态）为唯一渲染数据源——setErows 重建 MAPPING，
    经 ctx.applyErows 暴露给 edit-mode（暂存/发布后即时重画组件栏；修 PUT 后表格不刷新的存量问题） */
@@ -1283,14 +1283,15 @@ function mapColHtml(x){const m=MAPPING&&MAPPING[x.name];if(!m)return"";
   `<div class="ct-map-src">${esc(LIB_NAME||"")}<\/div>`+
   (m.thumbnail_url?`<img class="ct-map-preview" src="${esc(absThumb(m.thumbnail_url))}" alt="${esc(name)}" loading="lazy" onerror="this.style.display='none'">`:"")+
   `<\/div>`}
-/* 编辑模式关联列：编辑路由下强制渲染（MAPPING 已从 EROWS 构建，无行 → 未关联灰卡） */
-const editMapColHtml=x=>mapColHtml(x)||`<div class="ct-map none"><div class="ct-map-h"><b>未关联 Pixso 组件<\/b><\/div><div class="ct-map-note">关联后可在生成设计稿时使用对应组件实例<\/div><\/div>`;
+/* 关联列（查看/编辑通用）：有映射数据 → 卡片；无映射/未关联 → 「未关联 Pixso 组件」灰卡。
+ * 查看页未发布/存量系统（json 无 mapping 键 → MAPPING=null）也恒渲染三列，与编辑页形态一致 */
+const mapColAuto=x=>mapColHtml(x)||`<div class="ct-map none"><div class="ct-map-h"><b>未关联 Pixso 组件<\/b><\/div><div class="ct-map-note">关联后可在生成设计稿时使用对应组件实例<\/div><\/div>`;
 function rList(key,title,list,descText){return box=>{
- const isEdit=key==="components"&&EDIT;
- const hasMap=key==="components"&&(!!MAPPING||isEdit);
- const tableCls=`ct-table ${hasMap?"ct-table-map":""} ${isEdit?"ct-table-edit":""}`;
+  const isEdit=key==="components"&&EDIT;
+  const hasMap=key==="components";/* 组件表恒三列：查看页未关联/未发布也显示「关联设计组件」列（灰卡） */
+  const tableCls=`ct-table ${hasMap?"ct-table-map":""} ${isEdit?"ct-table-edit":""}`;
  const editTools=isEdit?`<button type="button" class="btn-em" data-em-wizard>${icon("link")}关键设计组件<\/button>`:"";
-  box.innerHTML=shell(key,title,descText,key==="components"?`<div style="display:flex;gap:8px;align-items:center;">${`<label class="dl-search">${icon("search")}<input placeholder="搜索组件名称" data-cq><\/label>`}${editTools}<\/div>`:"")+groupsOf(list).map(({g,items})=>`<div class="as-cat ct-cat" data-cgrp="${esc(g)}">${isFlat(list)?"":`<button type="button" class="as-cat-h ct-group-toggle" aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button>`}<div class="${tableCls}"><div class="ct-row ct-th"><div>名称<\/div><div>预览<\/div>${hasMap?"<div>关联设计组件<\/div>":""}${isEdit?"<div>操作<\/div>":""}<\/div>${items.map(x=>{const zh=isEdit&&EROWS[x.name]&&EROWS[x.name].html_zh?`<span class="component-zh">${esc(EROWS[x.name].html_zh)}<\/span>`:"";return `<div class="ct-row cp-block" id="${key}-${esc(x.id)}" data-q="${esc((x.name+(MAPPING&&MAPPING[x.name]&&MAPPING[x.name].pixso_name?" "+MAPPING[x.name].pixso_name:"")).toLowerCase())}"><div class="ct-name"><div class="nm">${nameHtml(x)}${zh}<\/div><\/div><div class="ct-preview">${x.html?`<iframe class="cp-frame" src="${esc(res(x.html))}" style="height:${Math.max(80,px(x.height)||160)}px" title="${esc(x.name)}" loading="lazy"><\/iframe>`:`<div class="ct-empty">暂无预览：本次未生成，原因见转化报告<\/div>`}<\/div>${hasMap?`<div class="ct-mapcol">${isEdit?editMapColHtml(x):mapColHtml(x)}<\/div>`:""}${isEdit?`<div class="ct-op"><button data-em-edit="${esc(x.name)}">编辑<\/button><\/div>`:""}<\/div>`}).join("")}<\/div><\/div>`).join("");
+  box.innerHTML=shell(key,title,descText,key==="components"?`<div style="display:flex;gap:8px;align-items:center;">${`<label class="dl-search">${icon("search")}<input placeholder="搜索组件名称" data-cq><\/label>`}${editTools}<\/div>`:"")+groupsOf(list).map(({g,items})=>`<div class="as-cat ct-cat" data-cgrp="${esc(g)}">${isFlat(list)?"":`<button type="button" class="as-cat-h ct-group-toggle" aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button>`}<div class="${tableCls}"><div class="ct-row ct-th"><div>名称<\/div><div>预览<\/div>${hasMap?"<div>关联设计组件<\/div>":""}${isEdit?"<div>操作<\/div>":""}<\/div>${items.map(x=>{const zh=isEdit&&EROWS[x.name]&&EROWS[x.name].html_zh?`<span class="component-zh">${esc(EROWS[x.name].html_zh)}<\/span>`:"";return `<div class="ct-row cp-block" id="${key}-${esc(x.id)}" data-q="${esc((x.name+(MAPPING&&MAPPING[x.name]&&MAPPING[x.name].pixso_name?" "+MAPPING[x.name].pixso_name:"")).toLowerCase())}"><div class="ct-name"><div class="nm">${nameHtml(x)}${zh}<\/div><\/div><div class="ct-preview">${x.html?`<iframe class="cp-frame" src="${esc(res(x.html))}" style="height:${Math.max(80,px(x.height)||160)}px" title="${esc(x.name)}" loading="lazy"><\/iframe>`:`<div class="ct-empty">暂无预览：本次未生成，原因见转化报告<\/div>`}<\/div>${hasMap?`<div class="ct-mapcol">${mapColAuto(x)}<\/div>`:""}${isEdit?`<div class="ct-op"><button data-em-edit="${esc(x.name)}">编辑<\/button><\/div>`:""}<\/div>`}).join("")}<\/div><\/div>`).join("");
   box.addEventListener("click",e=>{const t=e.target.closest(".ct-group-toggle");if(!t)return;const o=t.getAttribute("aria-expanded")==="true";t.setAttribute("aria-expanded",String(!o));t.nextElementSibling.hidden=o});
   const q=$("[data-cq]",box);if(q)q.oninput=()=>{const v=q.value.trim().toLowerCase();$$(".cp-block",box).forEach(r=>r.hidden=!!v&&!r.dataset.q.includes(v));$$("[data-cgrp]",box).forEach(c=>c.hidden=!$(".cp-block:not([hidden])",c))}}}
 /* 预览 iframe 高度：预览页通过 postMessage 上报（v4 组件 html 自带变体切换 + 高度上报，
