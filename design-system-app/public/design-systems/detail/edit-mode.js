@@ -254,7 +254,7 @@ export async function editSetup(ctx) {
     Promise.all([
       fetchLibraryComponents(lib.id),
       new Promise(function (r) { setTimeout(r, 1200) }),
-      (async function () { try { await fetch(API + slug + "/mapping/sync", { method: "POST" }); await reloadEROWS() } catch (e) { } })(),
+      (async function () { try { var r = await fetch(API + slug + "/mapping/sync", { method: "POST" }); if (!r.ok) console.warn("[edit] sync 返回 HTTP " + r.status); await reloadEROWS() } catch (e) { console.warn("[edit] sync 失败:", e.message) } })(),
     ]).then(function (arr) {
       var full = arr[0]
       var candidates = buildCandidates(full.components)
@@ -282,17 +282,24 @@ export async function editSetup(ctx) {
     if (!items.length) { closeWiz(); return }
     W.saving = true; W.err = ""
     setFoot('<span class="spacer"></span><button class="em-btn" disabled>取消</button><button class="em-btn em-btn-primary" disabled>保存中...</button>')
-    fetch(API + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: items }) })
-      .then(function (res) {
-        if (!res.ok) return res.json().catch(function () { return null }).then(function (b) { throw new Error("HTTP " + res.status + (b && b.detail ? "：" + b.detail : "")) })
-        closeWiz(); return refresh()
-      })
-      .catch(function (e) {
-        W.err = "保存失败：" + e.message; W.saving = false
-        setFoot('<span class="em-dlg-err">' + esc(W.err) + '</span><span class="spacer"></span><button class="em-btn" data-em-wiz-close>取消</button><button class="em-btn em-btn-primary" data-em-confirm>确定</button>')
-        dlgFoot().querySelector("[data-em-wiz-close]").addEventListener("click", closeWiz)
-        dlgFoot().querySelector("[data-em-confirm]").addEventListener("click", function () { confirmMatch() })
-      })
+    var doPut = function () {
+      return fetch(API + slug + "/mapping", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: items }) })
+    }
+    /* 400 = 映射表无行（sync 静默失败或无 index.json）→ 先 sync 再重试 PUT */
+    doPut().then(function (res) {
+      if (res.status === 400) {
+        return fetch(API + slug + "/mapping/sync", { method: "POST" }).catch(function () { }).then(doPut)
+      }
+      return res
+    }).then(function (res) {
+      if (!res.ok) return res.json().catch(function () { return null }).then(function (b) { throw new Error("HTTP " + res.status + (b && b.detail ? "：" + b.detail : "")) })
+      closeWiz(); return refresh()
+    }).catch(function (e) {
+      W.err = "保存失败：" + e.message; W.saving = false
+      setFoot('<span class="em-dlg-err">' + esc(W.err) + '</span><span class="spacer"></span><button class="em-btn" data-em-wiz-close>取消</button><button class="em-btn em-btn-primary" data-em-confirm>确定</button>')
+      dlgFoot().querySelector("[data-em-wiz-close]").addEventListener("click", closeWiz)
+      dlgFoot().querySelector("[data-em-confirm]").addEventListener("click", function () { confirmMatch() })
+    })
   }
 
   /* ═════ 编辑组件弹窗 ═════ */
