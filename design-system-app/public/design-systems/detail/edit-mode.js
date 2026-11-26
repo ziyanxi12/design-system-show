@@ -477,7 +477,7 @@ export async function editSetup(ctx) {
   function openPicker() {
     var fk = systemFileKey()
     if (!fk) { openWizard(); return }
-    Pk = { q: "", groups: {}, selected: Ed.resolved ? Ed.resolved.guid : null, openCats: new Set(), openSets: new Set(), loading: true }
+    Pk = { q: "", groups: {}, selected: Ed.resolved ? Ed.resolved.guid : null, openCats: new Set(), openPages: new Set(), loading: true }
     root.innerHTML = '<div class="em-mask"><div class="em-dlg em-picker" onclick="event.stopPropagation()">' +
       '<div class="em-dlg-head">' +
       '<button class="em-picker-back" data-em-picker-back>' + IC.chevL + "</button>" +
@@ -509,27 +509,26 @@ export async function editSetup(ctx) {
         var sg = cf.containingStateGroup
         if (sg) {
           var info = byGuid.get(sg.nodeId)
-          if (!info) { info = { guid: sg.nodeId, name: sg.name, category: cf.name || "", thumb: "", vthumbs: [], variants: [] }; byGuid.set(sg.nodeId, info) }
+          if (!info) { info = { guid: sg.nodeId, name: sg.name, category: cf.name || "", page: cf.pageName || "", thumb: "", vthumbs: [] }; byGuid.set(sg.nodeId, info) }
           var t = thumbVal(e)
           if (t) { info.vthumbs.push(t); info.thumb = pickSetThumb(info.vthumbs, info.guid) }
-          info.variants.push({ guid: e.node_id, name: e.name || "" })
         } else if (e.node_id && !byGuid.has(e.node_id)) {
-          byGuid.set(e.node_id, { guid: e.node_id, name: String(e.name || "").split("/")[0], category: cf.name || "", thumb: thumbVal(e), variants: [] })
+          byGuid.set(e.node_id, { guid: e.node_id, name: String(e.name || "").split("/")[0], category: cf.name || "", page: cf.pageName || "", thumb: thumbVal(e) })
         }
       }
+      /* 两级归组：一层 containing_frame.pageName（值非占位页名 NewComponents 时才渲染该层）
+       * → 二层 containing_frame.name（分类）→ 格子（containingStateGroup.name + 缩略图） */
       Pk.groups = {}
       for (var r of byGuid.values()) {
         if (r.name.indexOf(".") === 0 || r.name.indexOf("TUI-SVG") === 0 || r.name.indexOf("Text-to-UI Icon") === 0) continue
-        var cat = r.category || "未分类"
-        if (!Pk.groups[cat]) Pk.groups[cat] = []
-        Pk.groups[cat].push(r)
+        var g = Pk.groups[r.page]
+        if (!g) g = Pk.groups[r.page] = { page: r.page, cats: {} }
+        var ck = r.category || "未分类"
+        if (!g.cats[ck]) g.cats[ck] = []
+        g.cats[ck].push(r)
       }
-      /* 初始展开：选中组件的分类 → 第一个分类 */
-      if (Pk.selected) {
-        var si = findPickerItem(Pk.selected)
-        if (si && si.category && Pk.groups[si.category]) Pk.openCats.add(si.category)
-      }
-      if (!Pk.openCats.size) { var firstCat = Object.keys(Pk.groups)[0]; if (firstCat) Pk.openCats.add(firstCat) }
+      /* 初始全折叠：页/分类/变体三级均收起，点击哪级展开哪级（搜索时强制展开）
+       * 选中项回显靠底部「已选：xxx」，不自动展开定位 */
       Pk.loading = false
       renderPickerContent()
     }).catch(function (e) {
@@ -540,9 +539,12 @@ export async function editSetup(ctx) {
   }
 
   function findPickerItem(guid) {
-    for (var cat in Pk.groups) {
-      for (var i = 0; i < Pk.groups[cat].length; i++) {
-        if (Pk.groups[cat][i].guid === guid) return Pk.groups[cat][i]
+    for (var pk in Pk.groups) {
+      var cats = Pk.groups[pk].cats
+      for (var ck in cats) {
+        for (var i = 0; i < cats[ck].length; i++) {
+          if (cats[ck][i].guid === guid) return cats[ck][i]
+        }
       }
     }
     return null
@@ -553,16 +555,39 @@ export async function editSetup(ctx) {
     if (!listEl) return
     var q = Pk.q.trim().toLowerCase()
     var html = ""
-    for (var cat in Pk.groups) {
-      var all = Pk.groups[cat]
-      var filtered = q ? all.filter(function (x) { return x.name.toLowerCase().indexOf(q) >= 0 }) : all
-      if (!filtered.length) continue
-      var open = q ? true : Pk.openCats.has(cat)
-      html += '<div class="em-picker-cat-node' + (open ? " open" : "") + '" data-cat-toggle="' + esc(cat) + '">' +
-        '<span class="em-tree-chev">' + IC.chev + "</span>" +
-        '<span class="em-picker-cat-name">' + esc(cat) + "</span>" +
-        '<span class="em-picker-cat-count">' + filtered.length + "个组件</span>" +
-        "</div>"
+    /* 页/分类均按名称排序（编号页面「1.操作类…」自然按序），不受数据插入顺序影响 */
+    var pages = Object.keys(Pk.groups).sort()
+    for (var pi = 0; pi < pages.length; pi++) {
+      var pk = pages[pi]
+      var g = Pk.groups[pk]
+      /* 一层：containing_frame.pageName 组头（可折叠）——值为占位页名（NewComponents，
+       * demo/新组件暂存页）或空时不显示该层，直接铺二层分类；真实页面名（如「1.操作类」）正常展示 */
+      var showPage = g.page && g.page !== "NewComponents"
+      var pageOpen = q ? true : Pk.openPages.has(pk)
+      if (showPage) {
+        var pageCount = 0
+        var catKeys0 = Object.keys(g.cats)
+        for (var pc = 0; pc < catKeys0.length; pc++) pageCount += g.cats[catKeys0[pc]].length
+        html += '<div class="em-picker-page-node' + (pageOpen ? " open" : "") + '" data-page-toggle="' + esc(pk) + '">' +
+          '<span class="em-tree-chev">' + IC.chev + "</span>" +
+          '<span class="em-picker-page-name">' + esc(g.page) + "</span>" +
+          '<span class="em-picker-page-count">' + pageCount + "个组件</span>" +
+          "</div>"
+      }
+      if (pageOpen || !showPage) {
+        var catKeys = Object.keys(g.cats).sort()
+        for (var ci = 0; ci < catKeys.length; ci++) {
+          var ck = catKeys[ci]
+          var all = g.cats[ck]
+        var filtered = q ? all.filter(function (x) { return x.name.toLowerCase().indexOf(q) >= 0 }) : all
+        if (!filtered.length) continue
+        var catKey = pk + "\u0001" + ck
+        var open = q ? true : Pk.openCats.has(catKey)
+        html += '<div class="em-picker-cat-node' + (open ? " open" : "") + (showPage ? " in-page" : "") + '" data-cat-toggle="' + esc(catKey) + '">' +
+          '<span class="em-tree-chev">' + IC.chev + "</span>" +
+            '<span class="em-picker-cat-name">' + esc(showPage ? g.page + " / " + ck : ck) + "</span>" +
+          '<span class="em-picker-cat-count">' + filtered.length + "个组件</span>" +
+          "</div>"
       if (open) {
         html += '<div class="em-picker-grid">'
         for (var i = 0; i < filtered.length; i++) {
@@ -577,39 +602,18 @@ export async function editSetup(ctx) {
             "</div>"
         }
         html += "</div>"
-        html += '<div class="em-picker-tree">'
-        for (var j = 0; j < filtered.length; j++) {
-          var t = filtered[j]
-          var tSel = Pk.selected === t.guid
-          var hasVariants = t.variants && t.variants.length > 0
-          var setOpen = Pk.openSets.has(t.guid)
-          html += '<div class="em-picker-item' + (tSel ? " sel" : "") + '" data-guid="' + esc(t.guid) + '">' +
-            (hasVariants
-              ? '<span class="em-tree-chev' + (setOpen ? " open" : "") + '" data-set-toggle="' + esc(t.guid) + '">' + IC.chev + "</span>"
-              : '<span class="em-tree-spacer"></span>') +
-            '<span class="em-picker-item-name">' + esc(t.name) + "</span>" +
-            '<span class="em-picker-item-check">' + (tSel ? IC.check : "") + "</span>" +
-            "</div>"
-          if (hasVariants && setOpen) {
-            for (var k = 0; k < t.variants.length; k++) {
-              var v = t.variants[k]
-              html += '<div class="em-picker-variant" data-guid="' + esc(t.guid) + '">' +
-                '<span class="em-picker-variant-name">' + esc(v.name) + "</span>" +
-                "</div>"
-            }
-          }
         }
-        html += "</div>"
+        }
       }
     }
     if (!html) html = '<div class="em-wiz-empty" style="flex:1">' + (Pk.loading ? "组件加载中..." : q ? "没有匹配的组件" : "暂无组件") + "</div>"
     listEl.innerHTML = html
     listEl.onclick = function (e) {
-      var setToggle = e.target.closest("[data-set-toggle]")
-      if (setToggle) {
-        var sg2 = setToggle.dataset.setToggle
-        if (Pk.openSets.has(sg2)) Pk.openSets.delete(sg2)
-        else Pk.openSets.add(sg2)
+      var pageNode = e.target.closest("[data-page-toggle]")
+      if (pageNode) {
+        var pg = pageNode.dataset.pageToggle
+        if (Pk.openPages.has(pg)) Pk.openPages.delete(pg)
+        else Pk.openPages.add(pg)
         renderPickerContent()
         return
       }

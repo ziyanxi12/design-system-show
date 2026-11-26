@@ -233,7 +233,7 @@ export default function EditMappingPage(): JSX.Element {
                     <span>预览量 {m().views ?? 0}</span>
                   </div>
                 </div>
-                {/* 暂存-发布：与作者/调用量行右对齐——初态「编辑」；编辑态「取消 + 确认发布（dirty 时亮起）」+ 结果反馈 */}
+                {/* 暂存-发布：与作者/调用量行右对齐——初态「编辑」；编辑态「取消 + 确认发布（恒蓝可点）」+ 结果反馈 */}
                 <div class="dsd-pub">
                   <Show when={!editing()}>
                     <button class="dsd-pub-btn" disabled={!loaded()} onClick={doStartEdit}>编辑</button>
@@ -247,7 +247,7 @@ export default function EditMappingPage(): JSX.Element {
                       <button
                         class="dsd-pub-btn"
                         classList={{ ok: pubState() === "ok", fail: pubState() === "fail" }}
-                        disabled={!dirty() || pubState() === "busy"}
+                        disabled={pubState() === "busy"}
                         onClick={doPublish}
                       >
                         {pubLabel()}
