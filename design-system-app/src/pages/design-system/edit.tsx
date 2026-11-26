@@ -8,6 +8,9 @@ import { API_BASE } from "../../config"
 const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 10 10" fill="none"><path d="M6 1L2 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 const VIEWS_ICON = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 7s2-3.5 5.5-3.5S12.5 7 12.5 7 10.5 10.5 7 10.5 1.5 7 1.5 7z"/><circle cx="7" cy="7" r="1.7"/></svg>'
 
+/** 编辑按钮 16×16 图标（square_and_pencil，白 fill 蓝底适配） */
+const EDIT_ICON = `<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" fill="none"><defs><filter id="ed-mask-f"><feColorMatrix type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0"/></filter></defs><mask id="ed-mask-0" width="16" height="16" x="0" y="0" maskUnits="userSpaceOnUse"><g filter="url(#ed-mask-f)"><g id="ed-hm"><rect id="ed-bg" width="16" height="16" x="0" y="0" fill="rgb(255,255,255)"/><g id="ed-grp"><path id="ed-cut" d="M15.5666 0.446639C15.4289 0.308861 15.2666 0.202195 15.08 0.126639C14.8933 0.0510834 14.6978 0.0133057 14.4933 0.0133057C14.2933 0.0133057 14.1 0.0510834 13.9133 0.126639C13.7266 0.202195 13.5644 0.308861 13.4266 0.446639L7.07331 6.81331C6.97553 6.91108 6.89997 7.00886 6.84664 7.10664L5.93331 8.71997C5.84886 8.88886 5.80664 9.06219 5.80664 9.23997C5.80664 9.41775 5.85553 9.57553 5.95331 9.71331C6.03775 9.85997 6.15775 9.97997 6.31331 10.0733C6.46886 10.1622 6.63108 10.2066 6.79997 10.2066C6.95997 10.2066 7.11553 10.1644 7.26664 10.08L8.89331 9.15331C8.99109 9.10886 9.09331 9.03331 9.19997 8.92664L15.5666 2.57331C15.8555 2.27553 16 1.92219 16 1.51331C16 1.09997 15.8555 0.744417 15.5666 0.446639Z" fill="rgb(0,0,0)" fill-rule="evenodd"/></g></g></g></mask><g mask="url(#ed-mask-0)"><path id="ed-sq" d="M11.7464 14.4C12.1909 14.4 12.6064 14.2889 12.9931 14.0667C13.3753 13.84 13.6797 13.5356 13.9064 13.1534C14.1286 12.7667 14.2397 12.3511 14.2397 11.9067L14.2397 4.24004C14.2397 3.79115 14.1286 3.37559 13.9064 2.99337C13.6797 2.6067 13.3753 2.30226 12.9931 2.08004C12.6064 1.85782 12.1909 1.7467 11.7464 1.7467L4.07974 1.7467C3.62196 1.7467 3.19974 1.85782 2.81307 2.08004C2.43085 2.30226 2.12863 2.6067 1.90641 2.99337C1.67974 3.37559 1.56641 3.79115 1.56641 4.24004L1.56641 11.9067C1.56641 12.3511 1.67974 12.7667 1.90641 13.1534C2.12863 13.5356 2.43085 13.84 2.81307 14.0667C3.19974 14.2889 3.62196 14.4 4.07974 14.4L11.7464 14.4ZM11.7464 2.73337C12.1509 2.73337 12.502 2.88004 12.7997 3.17337C13.0975 3.4667 13.2464 3.82226 13.2464 4.24004L13.2464 11.8867C13.2464 12.3045 13.0975 12.66 12.7997 12.9534C12.502 13.2467 12.1509 13.3934 11.7464 13.3934L4.07974 13.3934C3.66196 13.3934 3.30641 13.2467 3.01307 12.9534C2.71974 12.66 2.57307 12.3045 2.57307 11.8867L2.57307 4.24004C2.57307 3.82226 2.71974 3.4667 3.01307 3.17337C3.30641 2.88004 3.66196 2.73337 4.07974 2.73337L11.7464 2.73337Z" fill="rgb(255,255,255)" fill-rule="evenodd"/></g><g id="ed-pen"><path id="ed-pen-p" d="M6.60681 9.13329C6.5757 9.18662 6.57126 9.23995 6.59348 9.29329C6.6157 9.34662 6.6557 9.3844 6.71348 9.40662C6.77126 9.42884 6.82681 9.42884 6.88015 9.40662L8.08015 8.73329C8.16459 8.67995 8.24459 8.62662 8.32015 8.57329L8.43348 8.49329L7.52015 7.59995L7.42681 7.74662C7.39126 7.78662 7.36681 7.81995 7.35348 7.84662C7.3357 7.87329 7.31126 7.90884 7.28015 7.95329L6.60681 9.13329ZM15.0268 0.993288C14.8846 0.85551 14.7157 0.786621 14.5201 0.786621C14.3246 0.786621 14.1557 0.85551 14.0135 0.993288L8.01348 6.99329L7.95348 7.05329C7.92237 7.09773 7.88459 7.14662 7.84015 7.19995L8.81348 8.17329C8.86681 8.14218 8.93792 8.0844 9.02681 7.99995L15.0268 1.99995C15.1735 1.86218 15.2468 1.69329 15.2468 1.49329C15.2468 1.29773 15.1735 1.13107 15.0268 0.993288Z" fill="rgb(255,255,255)" fill-rule="nonzero"/></g></svg>`
+
 /** 预览页去缓存：追加时间戳参数，每次进详情页强制拉最新 HTML */
 const cacheBust = (u: string) => `${u}${u.includes("?") ? "&" : "?"}t=${Date.now()}`
 
@@ -53,9 +56,11 @@ export default function EditMappingPage(): JSX.Element {
       const d = (e.data as { ok?: boolean; error?: string; dropped?: string[] } | null) || {}
       window.clearTimeout(pubTimer)
       if (d.ok) {
-        setPubState("ok")
-        setPubMsg(d.dropped && d.dropped.length ? `已发布；${d.dropped.length} 行不在映射表，仍保留暂存` : "")
-        pubTimer = window.setTimeout(() => { setPubState("idle"); setPubMsg(""); setEditing(false); iframe?.contentWindow?.postMessage({ type: "ds-edit-off" }, "*") }, 2400)
+        /* 发布成功：直接回 /edit 页面——不做绿色「已发布」闪现 */
+        setPubState("idle")
+        setPubMsg("")
+        setEditing(false)
+        iframe?.contentWindow?.postMessage({ type: "ds-edit-off" }, "*")
       } else {
         setPubState("fail")
         setPubMsg(d.error || "发布失败")
@@ -93,8 +98,7 @@ export default function EditMappingPage(): JSX.Element {
   }
   const pubLabel = () => {
     if (pubState() === "busy") return "发布中..."
-    if (pubState() === "ok") return "已发布"
-    return dirty() ? `确认发布${stagedCount() ? ` · ${stagedCount()}` : ""}` : "确认发布"
+    return "确认发布"
   }
 
   onMount(() => {
@@ -200,13 +204,13 @@ export default function EditMappingPage(): JSX.Element {
               .dsd-meta .bar { width:1px; height:12px; background:rgba(0,0,0,0.1); }
               .dsd-meta .usage-ic { width:14px; height:14px; color:#777777; display:inline-flex; }
               .dsd-pub { margin-left:auto; align-self:flex-end; display:flex; align-items:center; gap:10px; padding-bottom:1px; }
-              .dsd-pub-btn { height:32px; padding:0 20px; border-radius:999px; border:0; background:#0A59F7; color:#fff; font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap; }
+              .dsd-pub-btn { width:88px; height:32px; padding:0; border-radius:999px; border:0; background:#0A59F7; color:#fff; font-size:14px; font-weight:500; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:4px; }
+              .dsd-pub-btn svg { width:16px; height:16px; flex-shrink:0; }
               .dsd-pub-btn:hover:enabled { background:#3B7BF9; }
               .dsd-pub-btn:disabled { background:#C5CDD8; color:#fff; cursor:not-allowed; }
-              .dsd-pub-btn.ok { background:#12B76A; }
               .dsd-pub-btn.fail { background:#D92D20; }
-              .dsd-pub-discard { height:32px; padding:0 14px; border-radius:999px; border:1px solid rgba(0,0,0,0.15); background:#fff; color:#777777; font-size:13px; cursor:pointer; white-space:nowrap; }
-              .dsd-pub-discard:hover { color:#191919; border-color:rgba(0,0,0,0.3); }
+              .dsd-pub-discard { width:88px; height:32px; padding:0; border-radius:999px; border:0; background:rgba(25,25,25,0.05); color:#777777; font-size:14px; cursor:pointer; white-space:nowrap; }
+              .dsd-pub-discard:hover { color:#191919; background:rgba(25,25,25,0.08); }
               .dsd-pub-msg { font-size:12px; color:#777777; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
               .dsd-pub-msg.err { color:#D92D20; }
             `}</style>
@@ -236,7 +240,7 @@ export default function EditMappingPage(): JSX.Element {
                 {/* 暂存-发布：与作者/调用量行右对齐——初态「编辑」；编辑态「取消 + 确认发布（恒蓝可点）」+ 结果反馈 */}
                 <div class="dsd-pub">
                   <Show when={!editing()}>
-                    <button class="dsd-pub-btn" disabled={!loaded()} onClick={doStartEdit}>编辑</button>
+                    <button class="dsd-pub-btn" disabled={!loaded()} onClick={doStartEdit}><span innerHTML={EDIT_ICON} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0" />编辑</button>
                   </Show>
                   <Show when={editing()}>
                     <>
@@ -246,7 +250,7 @@ export default function EditMappingPage(): JSX.Element {
                       <button class="dsd-pub-discard" onClick={doCancelEdit}>取消</button>
                       <button
                         class="dsd-pub-btn"
-                        classList={{ ok: pubState() === "ok", fail: pubState() === "fail" }}
+                        classList={{ fail: pubState() === "fail" }}
                         disabled={pubState() === "busy"}
                         onClick={doPublish}
                       >
