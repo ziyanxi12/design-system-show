@@ -30,6 +30,7 @@ export default function EditMappingPage(): JSX.Element {
   const [stagedCount, setStagedCount] = createSignal(0)
   const [pubState, setPubState] = createSignal<"idle" | "busy" | "ok" | "fail">("idle")
   const [pubMsg, setPubMsg] = createSignal("")
+  const [editing, setEditing] = createSignal(false)
   let pubTimer: number | undefined
   let iframe: HTMLIFrameElement | undefined
 
@@ -54,7 +55,7 @@ export default function EditMappingPage(): JSX.Element {
       if (d.ok) {
         setPubState("ok")
         setPubMsg(d.dropped && d.dropped.length ? `已发布；${d.dropped.length} 行不在映射表，仍保留暂存` : "")
-        pubTimer = window.setTimeout(() => { setPubState("idle"); setPubMsg("") }, 2400)
+        pubTimer = window.setTimeout(() => { setPubState("idle"); setPubMsg(""); setEditing(false); iframe?.contentWindow?.postMessage({ type: "ds-edit-off" }, "*") }, 2400)
       } else {
         setPubState("fail")
         setPubMsg(d.error || "发布失败")
@@ -73,10 +74,22 @@ export default function EditMappingPage(): JSX.Element {
     if (!dirty() || pubState() === "busy") return
     iframe?.contentWindow?.postMessage({ type: "ds-publish" }, "*")
   }
-  const doDiscard = () => {
-    if (!dirty() || pubState() === "busy") return
-    if (!window.confirm("放弃全部未发布的关联修改？")) return
+  const doStartEdit = () => {
+    if (!loaded()) return
+    setEditing(true)
+    iframe?.contentWindow?.postMessage({ type: "ds-edit-on" }, "*")
+  }
+  const doCancelEdit = () => {
+    if (pubState() === "busy") return
+    if (dirty() && !window.confirm("放弃全部未发布的关联修改？")) return
     iframe?.contentWindow?.postMessage({ type: "ds-discard" }, "*")
+    iframe?.contentWindow?.postMessage({ type: "ds-edit-off" }, "*")
+    setEditing(false)
+    setDirty(false)
+    setStagedCount(0)
+    setPubState("idle")
+    setPubMsg("")
+    window.clearTimeout(pubTimer)
   }
   const pubLabel = () => {
     if (pubState() === "busy") return "发布中..."
@@ -106,6 +119,7 @@ export default function EditMappingPage(): JSX.Element {
         setMeta(null)
         setNotFound(false)
         setDsReady(false)
+        setEditing(false)
         setDirty(false)
         setStagedCount(0)
         setPubState("idle")
@@ -219,22 +233,27 @@ export default function EditMappingPage(): JSX.Element {
                     <span>预览量 {m().views ?? 0}</span>
                   </div>
                 </div>
-                {/* 暂存-发布：与作者/调用量行右对齐——确认发布（dirty 时亮起）+ 放弃修改 + 结果反馈 */}
+                {/* 暂存-发布：与作者/调用量行右对齐——初态「编辑」；编辑态「取消 + 确认发布（dirty 时亮起）」+ 结果反馈 */}
                 <div class="dsd-pub">
-                  <Show when={pubMsg()}>
-                    <span class={`dsd-pub-msg ${pubState() === "fail" ? "err" : ""}`} title={pubMsg()}>{pubMsg()}</span>
+                  <Show when={!editing()}>
+                    <button class="dsd-pub-btn" disabled={!loaded()} onClick={doStartEdit}>编辑</button>
                   </Show>
-                  <Show when={dirty() && pubState() !== "busy"}>
-                    <button class="dsd-pub-discard" onClick={doDiscard} title="清空全部未发布的暂存修改">放弃修改</button>
+                  <Show when={editing()}>
+                    <>
+                      <Show when={pubMsg()}>
+                        <span class={`dsd-pub-msg ${pubState() === "fail" ? "err" : ""}`} title={pubMsg()}>{pubMsg()}</span>
+                      </Show>
+                      <button class="dsd-pub-discard" onClick={doCancelEdit}>取消</button>
+                      <button
+                        class="dsd-pub-btn"
+                        classList={{ ok: pubState() === "ok", fail: pubState() === "fail" }}
+                        disabled={!dirty() || pubState() === "busy"}
+                        onClick={doPublish}
+                      >
+                        {pubLabel()}
+                      </button>
+                    </>
                   </Show>
-                  <button
-                    class="dsd-pub-btn"
-                    classList={{ ok: pubState() === "ok", fail: pubState() === "fail" }}
-                    disabled={!dirty() || pubState() === "busy"}
-                    onClick={doPublish}
-                  >
-                    {pubLabel()}
-                  </button>
                 </div>
               </div>
             </div>
