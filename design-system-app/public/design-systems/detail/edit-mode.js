@@ -11,12 +11,17 @@
  */
 
 /* Pixso 跳转链接拼接模板：{PIXSO_URL_BASE}/design/{fileKey}?item-id={guid}
- * - PIXSO_URL_BASE：Pixso 端地址（demo = 本地桌面端 3667；换环境只改这里）
+ * - PIXSO_URL_BASE：Pixso 端地址，按 window.location.host 从 PIXSO_URL_MAP 取值（未命中兜底空串）
  * - fileKey：Pixso 文件 id，来自库明细数据——真实顶层为 snake_case file_key（无顶层时从条目
  *   file_key 推导），fetchLibraryComponents 已归一化成 lib.fileKey 统一取用
  * - guid：组件锚点（普通组件 node_id / 组件集 containingStateGroup.nodeId，即匹配命中的 pixso_guid）
  * 拼接处：runMatch（向导匹配）与 openPicker 确认回填两处 */
-const PIXSO_URL_BASE = "http://localhost:3667"
+/* host → Pixso 端地址映射：dev 前端跑在 8091，Pixso 桌面端 3667；正式环境按部署 host 增加条目 */
+const PIXSO_URL_MAP = {
+  "localhost:8091": "http://localhost:3667",
+  // 正式环境：按前端部署 host 增加对应 Pixso 地址
+}
+const PIXSO_URL_BASE = PIXSO_URL_MAP[window.location.host] ?? ""
 
 /* 组件库列表：直接 import fetch-subscribe.js（轻量元数据，demo 写死；正式换实现） */
 import { fetchSubscribedLibraries } from "./fetch-subscribe.js"
