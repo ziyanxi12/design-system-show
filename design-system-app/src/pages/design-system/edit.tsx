@@ -2,7 +2,7 @@ import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-
 import type { JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { itemToMeta, faceUrl, authorLabel, type DsMeta } from "./data"
-import { getEncryptedUserData, getUserInfo } from "../../utils/auth"
+import { getEncryptedUserData, getUserInfo, checkIsAdmin } from "../../utils/auth"
 import { API_BASE } from "../../config"
 
 const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 10 10" fill="none"><path d="M6 1L2 5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -34,6 +34,8 @@ export default function EditMappingPage(): JSX.Element {
   const [pubState, setPubState] = createSignal<"idle" | "busy" | "ok" | "fail">("idle")
   const [pubMsg, setPubMsg] = createSignal("")
   const [editing, setEditing] = createSignal(false)
+  /* 路由守卫：null=校验中 / true=白名单管理员放行；非管理员静默重定向回查看页 */
+  const [adminOk, setAdminOk] = createSignal<boolean | null>(null)
   let pubTimer: number | undefined
   let iframe: HTMLIFrameElement | undefined
 
@@ -104,6 +106,11 @@ export default function EditMappingPage(): JSX.Element {
   onMount(() => {
     window.addEventListener("message", onMessage)
     window.addEventListener("beforeunload", onBeforeUnload)
+    /* 守卫直查（不走列表页缓存，防陈旧）：通过才放行数据流；失败/非管理员 → 静默回查看页 */
+    void checkIsAdmin().then((ok) => {
+      if (ok) setAdminOk(true)
+      else navigate(`/design-system/${id()}`, { replace: true })
+    })
   })
   onCleanup(() => {
     window.removeEventListener("message", onMessage)
@@ -111,12 +118,14 @@ export default function EditMappingPage(): JSX.Element {
     window.clearTimeout(pubTimer)
   })
 
-  /* 数据流：id 变化 → 串行「打点 → 单条详情」（与 detail.tsx 完全一致） */
+  /* 数据流：id 变化 / 管理员校验放行 → 串行「打点 → 单条详情」（与 detail.tsx 完全一致；
+     守卫未通过前不发打点、不拉详情、不加载 iframe，停留在「加载中...」） */
   let aborter: AbortController | undefined
   createEffect(
     on(
-      () => id(),
-      (id) => {
+      () => [id(), adminOk()] as const,
+      ([id, ok]) => {
+        if (!ok) return
         aborter?.abort()
         const ctrl = new AbortController()
         aborter = ctrl

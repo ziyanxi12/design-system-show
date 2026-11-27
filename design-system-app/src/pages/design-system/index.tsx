@@ -1,8 +1,22 @@
-import { createSignal, createMemo, For, Show } from "solid-js"
+import { createSignal, createMemo, onMount, For, Show } from "solid-js"
 import type { JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { DS_REGISTRY, dsLoadState, authorLabel, faceUrl, type DsEntry } from "./data"
 import DesignSystemDetail from "./detail"
+import { getUserInfo, checkIsAdmin } from "../../utils/auth"
+
+/* 管理员角色缓存（account 键控）：卡片点击分流用。account 变化（嵌入场景宿主 postMessage
+ * userInfo 晚到、登录态变更）自动重查；无登录态时 checkIsAdmin 首行短路，预热不发请求 */
+let roleAccount = ""
+let roleP: Promise<boolean> = Promise.resolve(false)
+function isAdmin(): Promise<boolean> {
+  const acc = getUserInfo()?.account ?? ""
+  if (acc !== roleAccount) {
+    roleAccount = acc
+    roleP = checkIsAdmin()
+  }
+  return roleP
+}
 
 function SearchIcon(): JSX.Element {
   return (
@@ -53,8 +67,14 @@ export default function DesignSystemPage(): JSX.Element {
   })
 
   function handleCardClick(item: DsEntry) {
-    navigate(`/design-system/${item.id}`)
+    /* 管理员 → 映射编辑页，非管理员/匿名 → 查看页 */
+    void isAdmin().then((admin) =>
+      navigate(admin ? `/design-system/${item.id}/edit` : `/design-system/${item.id}`),
+    )
   }
+
+  /* 进列表页即预热角色查询（通常已就绪 → 点击零感知延迟） */
+  onMount(() => { void isAdmin() })
 
   /** 作者（对象数组）→ 卡片简略显示：≤2 全量 nickName(account)；>2 前 2 +「等N人」（全量 hover tip） */
   function authorBrief(meta: DsEntry["meta"]): string {

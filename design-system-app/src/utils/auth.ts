@@ -4,7 +4,10 @@
  * 嵌入兜底：宿主以 iframe 嵌入本端（跨源、门户 localStorage 不可达）时，onload 后向父页面
  * 播报 {type:"onLoad"}，宿主回发 {type:"userInfo", data:{...userInfo}} 作兜底登录态。
  */
+import { API_BASE } from "../config"
+
 const STORAGE_KEY = "userInfo"
+const LOGIN_TIME_KEY = "loginTime"
 
 export interface UserInfo {
   account: string
@@ -67,9 +70,49 @@ export function getUserInfo(): UserInfo | null {
   return readLocalUser() ?? hostUserInfo
 }
 
+/**
+ * X-User-Data 加密载荷 = userInfo + loginTime（api.md 契约；后端 AuthMiddleware 按
+ * DS_LOGIN_TTL_HOURS 校验 loginTime，缺失/超时 401——实测 whitelist/check 无 loginTime 即 401）。
+ * 正式环境统一登录页只写 userInfo 不写 loginTime：这里懒补写（仅缺失时，与 admin 端
+ * ensureLoginTime 同模式——已有值不覆盖，避免每次刷新续期）。
+ */
 export async function getEncryptedUserData(): Promise<string> {
   const user = getUserInfo()
   if (!user) return ""
+  if (!localStorage.getItem(LOGIN_TIME_KEY)) localStorage.setItem(LOGIN_TIME_KEY, String(Date.now()))
+  const loginTime = Number(localStorage.getItem(LOGIN_TIME_KEY))
   const { encryptUserData } = await import("./crypto")
-  return encryptUserData({ ...user })
+  return encryptUserData({ ...user, loginTime })
+}
+
+/**
+ * 白名单管理员校验（与管理台 AuthGuard 同口径）：GET /api/design-systems/whitelist/check，
+ * allowed && role ∈ {super, admin} 才可进映射编辑页（allowed=false 为停用/白名单外——管理台
+ * AuthGuard 同样拒绝；WHITELIST_ENABLED=false 时后端 allowed 恒 true，实际由 role 决定）。
+ * 无登录态 / 接口失败一律 false（fail-closed）。
+ * account 双通道：X-User-Data 头（AES 加密，后端优先解密，须含 loginTime——缺失即 401）+
+ * ?account= 查询参数（dev 未注入 AES key 时唯一通道）。
+ */
+export async function checkIsAdmin(): Promise<boolean> {
+  const user = getUserInfo()
+  console.info("[admin-check] account:", user?.account ?? "(无登录态)")
+  if (!user?.account) return false
+  try {
+    const headers: Record<string, string> = { "octo-vs-token": "octo_vs_7e91e862389139bab49247ba2550f366" }
+    try {
+      const encrypted = await getEncryptedUserData()
+      if (encrypted) headers["X-User-Data"] = encrypted
+    } catch { /* 加密失败 → 仅剩 ?account= 查询参数通道 */ }
+    const r = await fetch(
+      `${API_BASE}/api/design-systems/whitelist/check?account=${encodeURIComponent(user.account)}`,
+      { headers },
+    )
+    if (!r.ok) return false
+    const d = (await r.json()) as { allowed?: boolean; role?: string | null }
+    const ok = !!d.allowed && (d.role === "super" || d.role === "admin")
+    console.info("[admin-check] result:", JSON.stringify(d), "→", ok)
+    return ok
+  } catch {
+    return false
+  }
 }
