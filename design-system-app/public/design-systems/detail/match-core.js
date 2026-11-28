@@ -67,6 +67,16 @@ export function pickSetThumb(variantThumbs) {
  * 候选构建：把 Pixso 组件库的原始清单（guid 为 key）整理成可匹配的候选池。
  *
  * 处理规则：
+/**
+ * 候选构建：把 Pixso 组件库的原始清单（guid 为 key）整理成可匹配的候选池。
+ *
+ * Pixso 组件名来源（匹配名的唯一来源，264 条原始数据归并后的候选名）：
+ *   - 组件集名：containingStateGroup.name —— 设计师在 Pixso 中创建变体时定义的组件集名称
+ *     例：Accordion 集有变体 State=Collapsed / State=Expanded → 候选名 = "Accordion"（sg.name）
+ *   - 普通组件名：条目 name 的 "/" 前首段
+ *     例：name: "Input" → 候选名 = "Input"；name: "类型/子类/名称" → 候选名 = "类型"
+ *
+ * 处理规则：
  *   有 containingStateGroup → 变体 → 按集名聚合到 sets（锚点 guid = 集 nodeId）
  *     例：Accordion 集有 2 个变体（State=Collapsed / State=Expanded）→ 1 个候选 "Accordion"
  *   无 containingStateGroup → 普通组件 → 取名字首段放 plains（名字 "/" 前的部分）
@@ -127,23 +137,23 @@ export function buildCandidates(components) {
  * 单射防串：used Set 记录已占用的 Pixso 名——一个 Pixso 候选只能被一个 HTML 组件匹配。
  * 例：如果第一个 "Input" 已匹配 Pixso 的 "Input"，第二个 HTML "Input" 不会再命中同一个。
  *
- * @param {string[]} htmlNames 本地组件名列表（= design-system.json 的 items[].name）
- * @param {{sets: Map, plains: Map}} candidates buildCandidates 产物
- * @returns {Array<Object>} 每行：{
- *   component_name: "Button",       ← 本地组件名（join 键）
- *   pixso_name: "Button" | null,   ← 匹配到的 Pixso 候选名
- *   pixso_guid: "19:1378" | null,  ← Pixso 组件集/普通组件的 guid（锚点）
- *   pixso_thumb: "/static/..." | null, ← 命中候选的缩略图相对路径（渲染时拼 origin+/api 前缀）
- *   pixso_category: "操作类" | "",  ← Pixso 侧分类
- *   match_type: "exact"|"fuzzy"|null,
- *   status: "aligned"|"partial"|"missing",
- *   kind: "set"|"plain"|null       ← 命中的是组件集还是普通组件
- * }
- */
-export function matchAll(htmlNames, candidates) {
+  * @param {{name: string, zh: string}[]} htmlItems 本地组件条目（name=英文名/join 键；zh=中文名，空则跳过中文通道）
+  * @param {{sets: Map, plains: Map}} candidates buildCandidates 产物
+  * @returns {Array<Object>} 每行：{
+  *   component_name: "Button",       ← 本地组件英文名（join 键，恒为 item.name）
+  *   pixso_name: "Button" | null,   ← 匹配到的 Pixso 候选名
+  *   pixso_guid: "19:1378" | null,  ← Pixso 组件集/普通组件的 guid（锚点）
+  *   pixso_thumb: "/static/..." | null, ← 命中候选的缩略图相对路径（渲染时拼 origin+/api 前缀）
+  *   pixso_category: "操作类" | "",  ← Pixso 侧分类
+  *   match_type: "exact"|"fuzzy"|null,
+  *   status: "aligned"|"partial"|"missing",
+  *   kind: "set"|"plain"|null       ← 命中的是组件集还是普通组件
+  * }
+  */
+export function matchAll(htmlItems, candidates) {
   const used = new Set(); // 单射防串：已占用的 Pixso 名
 
-  /* 对一个 HTML 名尝试匹配（四层递进） */
+  /* 对一个名字尝试匹配（L1→L2→L3 三层递进，英文和中文通道共用） */
   const matchOne = (name) => {
     /* L1 精确匹配：区分大小写，逐字符比对 */
     for (const [store, kind] of [[candidates.sets, "set"], [candidates.plains, "plain"]]) {
@@ -169,15 +179,18 @@ export function matchAll(htmlNames, candidates) {
         }
       }
     }
-    return null; // 四层都未命中
+    return null; // 三层都未命中
   };
 
-  /* 逐个 HTML 名匹配，返回结果数组 */
-  return htmlNames.map((name) => {
-    const m = matchOne(name);
+  /* 逐个 HTML 组件项匹配，返回结果数组（先英后中：英文 L1→L2→L3 全没中 → 补试中文 L1→L2） */
+  return htmlItems.map((item) => {
+    /* 英文通道：先按 item.name 全三层匹配 */
+    let m = matchOne(item.name);
+    /* 中文通道：英文没中且有中文名 → 按 item.zh 再试（L3 对中文为空串天然跳过） */
+    if (!m && item.zh) m = matchOne(item.zh);
     if (m) used.add(m.pixso_name); // 占用该 Pixso 名，防止后续 HTML 组件重复匹配
     return {
-      component_name: name,
+      component_name: item.name, /* join 键恒为英文名 */
       /* 命中 → 展开匹配详情；未命中 → 全空 + missing */
       ...(m || { pixso_name: null, pixso_guid: null, pixso_thumb: null, pixso_category: "", match_type: null, status: "missing", kind: null }),
     };

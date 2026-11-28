@@ -427,7 +427,7 @@ export async function editSetup(ctx) {
       var fullFk = full.fileKey || lib.fileKey
       W.switchingLib = !!(currentFk && fullFk && currentFk !== fullFk)
       var candidates = buildCandidates(full.components)
-      var ms = matchAll(components.map(function (x) { return x.name }), candidates)
+      var ms = matchAll(components.map(function (x) { return { name: x.name, zh: x.zh || "" } }), candidates)
       W.results = ms.map(function (m) {
         var ex = erows[m.component_name]
         /* 换库时跳过 kept 逻辑——所有行允许被新库覆盖（匹配不上的确认时清空 pixso 字段） */
