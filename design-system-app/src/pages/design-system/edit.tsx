@@ -44,10 +44,9 @@ export default function EditMappingPage(): JSX.Element {
     const type = (e.data as { type?: string } | null)?.type
     if (type === "ds-ready") {
       setDsReady(true)
-    } else if (type === "ds-scroll") {
-      const d = (e.data as { section?: string; item?: string } | null) || {}
-      const hash = "#/design-system/" + id() + (d.section ? "/" + d.section : "") + (d.item ? "/" + d.item : "")
-      if (location.hash !== hash) history.replaceState(null, "", hash)
+    } else if (type === "ds-toast") {
+      const d = (e.data as { data?: { msg?: string; ok?: boolean } } | null)?.data
+      if (d?.msg) showHeadToast(d.msg, d.ok !== false)
     } else if (type === "ds-dirty") {
       const d = (e.data as { dirty?: boolean; count?: number } | null) || {}
       setDirty(!!d.dirty)
@@ -58,18 +57,40 @@ export default function EditMappingPage(): JSX.Element {
       const d = (e.data as { ok?: boolean; error?: string; dropped?: string[] } | null) || {}
       window.clearTimeout(pubTimer)
       if (d.ok) {
-        /* 发布成功：直接回 /edit 页面——不做绿色「已发布」闪现 */
+        /* 发布成功：toast + 回初态 */
+        showHeadToast("发布成功", true)
         setPubState("idle")
         setPubMsg("")
         setEditing(false)
         iframe?.contentWindow?.postMessage({ type: "ds-edit-off" }, "*")
       } else {
+        /* 发布失败：toast + 按钮红色态 */
+        showHeadToast("发布失败：" + (d.error || ""), false)
         setPubState("fail")
         setPubMsg(d.error || "发布失败")
         pubTimer = window.setTimeout(() => { setPubState("idle"); setPubMsg("") }, 6000)
       }
     }
   }
+
+  /* 头部中央 toast（iframe 经 ds-toast 触发，3 秒自动隐藏） */
+  let headToastTimer: number | undefined
+  function showHeadToast(msg: string, ok: boolean) {
+    const el = document.querySelector(".dsd-head")
+    if (!el) return
+    el.querySelector(".head-toast")?.remove()
+    window.clearTimeout(headToastTimer)
+    const t = document.createElement("div")
+    t.className = "head-toast"
+    const iconSvg = ok
+      ? '<svg viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none"><path d="M7 0C3.1402 0 0 3.1402 0 7C0 10.8598 3.1402 14 7 14C10.8598 14 14 10.8598 14 7C14 3.1402 10.8598 0 7 0ZM6.65348 9.45357L10.8535 5.25357C11.0515 5.05558 11.0515 4.74445 10.8535 4.54646C10.6555 4.34847 10.3444 4.34847 10.1464 4.54646L6.29993 8.39291L4.20348 6.29646C4.00549 6.09847 3.69436 6.09847 3.49637 6.29646C3.29838 6.49445 3.29838 6.80558 3.49637 7.00357L5.94637 9.45357C6.06422 9.57142 6.18208 9.63035 6.29993 9.63035C6.41778 9.63035 6.53563 9.57142 6.65348 9.45357Z" fill="rgb(9,170,113)" fill-rule="evenodd"/></svg>'
+      : '<svg viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none"><path d="M7 0C3.1402 0 0 3.1402 0 7C0 10.8598 3.1402 14 7 14C10.8598 14 14 10.8598 14 7C14 3.1402 10.8598 0 7 0ZM10.0682 4.96016C10.2524 4.77594 10.2524 4.47638 10.0682 4.29216C9.88395 4.10794 9.58439 4.10794 9.40017 4.29216L7.00017 6.69216L4.60017 4.29216C4.41595 4.10794 4.11639 4.10794 3.93217 4.29216C3.74795 4.47638 3.74795 4.77594 3.93217 4.96016L6.33217 7.36016L3.93217 9.76016C3.74795 9.94438 3.74795 10.2439 3.93217 10.4282C4.11639 10.6124 4.41595 10.6124 4.60017 10.4282L7.00017 8.02816L9.40017 10.4282C9.58439 10.6124 9.88395 10.6124 10.0682 10.4282C10.2524 10.2439 10.2524 9.94438 10.0682 9.76016L7.66817 7.36016L10.0682 4.96016Z" fill="rgb(224,33,40)" fill-rule="evenodd"/></svg>'
+    t.innerHTML = iconSvg + '<span style="margin-left:8px"></span>'
+    t.querySelector("span")!.textContent = msg
+    el.appendChild(t)
+    headToastTimer = window.setTimeout(() => t.remove(), 3000)
+  }
+  onCleanup(() => window.clearTimeout(headToastTimer))
 
   /* 暂存修改未发布时离开页面拦截（关闭/刷新 + 面包屑返回；应用内其他入口不做全局守卫） */
   const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -86,9 +107,9 @@ export default function EditMappingPage(): JSX.Element {
     setEditing(true)
     iframe?.contentWindow?.postMessage({ type: "ds-edit-on" }, "*")
   }
+  /* 直接取消：不弹确认（原生 confirm 在嵌入场景被静默拦截 → 按钮无响应）；丢弃内存暂存并退出编辑态 */
   const doCancelEdit = () => {
     if (pubState() === "busy") return
-    if (dirty() && !window.confirm("放弃全部未发布的关联修改？")) return
     iframe?.contentWindow?.postMessage({ type: "ds-discard" }, "*")
     iframe?.contentWindow?.postMessage({ type: "ds-edit-off" }, "*")
     setEditing(false)
@@ -196,7 +217,10 @@ export default function EditMappingPage(): JSX.Element {
         {(m: () => DsMeta) => (
           <>
             <style>{`
-              .dsd-head { box-sizing:border-box; background:#fff; padding:22px 24px 0 40px; height:134px; flex-shrink:0; }
+              .dsd-head { box-sizing:border-box; background:#fff; padding:22px 24px 0 40px; height:134px; flex-shrink:0; position:relative; }
+              .head-toast { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10; display:flex; align-items:center; gap:0; padding:8px 16px; border-radius:8px; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,.14); font-size:14px; line-height:20px; color:#191919; white-space:nowrap; pointer-events:none; animation:headToastIn .18s ease; }
+              .head-toast svg { width:14px; height:14px; flex-shrink:0; }
+              @keyframes headToastIn { from { opacity:0; transform:translate(-50%,-50%) translateY(-8px); } to { opacity:1; transform:translate(-50%,-50%); } }
               .dsd-head .crumb { display:flex; align-items:center; gap:8px; color:#777777; height:24px; font-size:14px; margin-left:-4px; cursor:pointer; }
               .dsd-head .crumb .back { width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; border-radius:4px; color:#777777; }
               .dsd-head .crumb .back:hover { background:rgba(0,0,0,0.05); }
