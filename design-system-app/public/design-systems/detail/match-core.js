@@ -52,19 +52,15 @@ export function thumbVal(entry) {
 }
 
 /**
- * 组件集缩略图选图规则（buildCandidates 与 edit-mode guidIndex 共用，保证卡片/下拉/弹窗三处图一致）：
- * 变体条目的 thumbnail_url 优先取「指向集锚点图」的（值含 {锚点 guid 去冒号}.png，如 19-1378.png），
- * 没有则取首个非空——集锚点本身不是 components 的 key，只能从变体条目里挑。
+ * 组件集缩略图选图规则（buildCandidates 与 edit-mode guidIndex 共用）：
+ * 取组件集的第一个有效变体缩略图。
  *
  * @param {string[]} variantThumbs 变体条目的 thumbnail_url 列表（已过滤 placeholder）
- * @param {string} anchorGuid 组件集锚点 guid（containingStateGroup.nodeId，如 "19:1378"）
- * @returns {string} 选中的缩略图相对路径（无候选 → ""）
+ * @returns {string} 第一个非空缩略图相对路径（无候选 → ""）
  */
-export function pickSetThumb(variantThumbs, anchorGuid) {
+export function pickSetThumb(variantThumbs) {
   const list = (variantThumbs || []).filter(Boolean);
-  if (!list.length) return "";
-  const anchor = String(anchorGuid || "").replace(/:/g, "-") + ".png";
-  return list.find((t) => t.indexOf(anchor) >= 0) || list[0];
+  return list[0] || "";
 }
 
 /**
@@ -108,7 +104,7 @@ export function buildCandidates(components) {
     }
   }
   /* 组件集缩略图：变体候选里选（锚点图优先） */
-  for (const s of sets.values()) s.thumb = pickSetThumb(s.vthumbs, s.guid);
+  for (const s of sets.values()) s.thumb = pickSetThumb(s.vthumbs);
 
   /* 调试：打印候选池（浏览器 console + Node CLI 均可看到） */
   console.log("[match-core] 候选池：" + sets.size + " 个组件集 + " + plains.size + " 个普通组件 = " + (sets.size + plains.size) + " 个候选");

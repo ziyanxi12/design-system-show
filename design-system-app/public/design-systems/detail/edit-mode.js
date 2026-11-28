@@ -154,7 +154,7 @@ export async function editSetup(ctx) {
                   m.set(sg.nodeId, info)
                 }
                 const t = thumbVal(e)
-                if (t) { info.vthumbs.push(t); info.thumb = pickSetThumb(info.vthumbs, info.guid) }
+                if (t) { info.vthumbs.push(t); info.thumb = pickSetThumb(info.vthumbs) }
                 if (e.node_id) m.set(e.node_id, info)
               } else if (e.node_id) {
                 m.set(e.node_id, { guid: e.node_id, name: String(e.name || "").split("/")[0], category: cf.name || "", thumb: thumbVal(e), fileKey: lib.fileKey || "" })
@@ -450,7 +450,7 @@ export async function editSetup(ctx) {
       /* 结果页库卡片展示元数据（库名/版本/组件数）改读订阅列表条目——真实明细响应顶层
          无 name/version/componentCount（仅 file_key/components 等），full 只作数据源 */
       lib.componentCount = candidates.sets.size + candidates.plains.size
-      W.matchLib = lib; W.stage = "result"; W.tab = "all"
+      W.matchLib = lib; W.stage = "result"; W.tab = "matched"
       showResult()
     }).catch(function (e) { W.err = "匹配失败：" + e.message; W.stage = "select"; fillSelect() })
   }
@@ -571,7 +571,7 @@ export async function editSetup(ctx) {
           var info = byGuid.get(sg.nodeId)
           if (!info) { info = { guid: sg.nodeId, name: sg.name, category: cf.name || "", page: cf.pageName || "", thumb: "", vthumbs: [] }; byGuid.set(sg.nodeId, info) }
           var t = thumbVal(e)
-          if (t) { info.vthumbs.push(t); info.thumb = pickSetThumb(info.vthumbs, info.guid) }
+          if (t) { info.vthumbs.push(t); info.thumb = pickSetThumb(info.vthumbs) }
         } else if (e.node_id && !byGuid.has(e.node_id)) {
           byGuid.set(e.node_id, { guid: e.node_id, name: String(e.name || "").split("/")[0], category: cf.name || "", page: cf.pageName || "", thumb: thumbVal(e) })
         }
