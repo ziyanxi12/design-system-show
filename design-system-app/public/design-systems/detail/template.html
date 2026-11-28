@@ -1041,11 +1041,12 @@ ul { list-style: none; }
 .ct-table-map .ct-row{grid-template-columns:clamp(150px,13vw,240px) minmax(0,1fr) clamp(200px,16vw,280px)!important}
 .ct-table-map .ct-th>div:nth-child(3),.ct-table-map .ct-row>div:nth-child(3){border-left:1px solid var(--border-1)}
 .ct-mapcol{padding:14px 16px;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.ct-map-card{font-size:12px;text-align:left}
+.ct-map-card{font-size:12px;text-align:left;display:flex;flex-direction:column;flex:1;min-height:0}
 .ct-map-link{display:inline-block;font-size:14px;line-height:22px;height:22px;font-weight:600;color:var(--brand);text-decoration:none;margin-bottom:10px}
 a.ct-map-link:hover{text-decoration:underline}
 .ct-map-src{font-size:12px;line-height:20px;height:20px;color:var(--text-3);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ct-map-preview{width:100%;height:auto;border-radius:8px;display:block;background:#F5F6F8}
+.ct-map-preview-wrap{flex:1;min-height:0;background:#FAFBFD;border-radius:8px;overflow:hidden}
+.ct-map-preview{width:100%;height:100%;object-fit:contain;display:block}
 .ct-map.none{height:100%;align-items:center;justify-content:center}
 .ct-map.none .ct-map-h b{color:var(--text-3);font-weight:400}
 
@@ -1248,14 +1249,13 @@ let EDIT=false, EDIT_ON=false, redrawHook=null, SLUG="", EROWS={};let API_BASE_S
   err:{design:mdErr}};}
  const T=D.tokens;
 
-/* ---- 组件 ↔ Pixso 映射（v4.4：design-system.json 自带 mapping/mappingLibraryName 键，零额外请求；
+/* ---- 组件 ↔ Pixso 映射（design-system.json 自带 mapping 键，零额外请求；
         无键（存量系统/未发布）→ MAPPING=null → 组件表仍恒三列，未关联行渲染灰卡（mapColAuto）） ---- */
 let MAPPING=DS.mapping&&typeof DS.mapping==="object"?DS.mapping:null;
 /* 编辑模式：EROWS（DB 行 + edit-mode 暂存层的工作态）为唯一渲染数据源——setErows 重建 MAPPING，
    经 ctx.applyErows 暴露给 edit-mode（暂存/发布后即时重画组件栏；修 PUT 后表格不刷新的存量问题） */
-function setErows(rows){EROWS=rows||{};if(!EDIT)return;MAPPING={};for(const[n,r]of Object.entries(EROWS))MAPPING[n]={pixso_name:r.pixso_name,pixso_guid:r.pixso_guid,url:r.url,status:r.status,thumbnail_url:r.thumbnail_url}}
+function setErows(rows){EROWS=rows||{};if(!EDIT)return;MAPPING={};for(const[n,r]of Object.entries(EROWS))MAPPING[n]={pixso_name:r.pixso_name,pixso_guid:r.pixso_guid,url:r.url,status:r.status,thumbnail_url:r.thumbnail_url,library_name:r.library_name}}
 setErows(EROWS);
-const LIB_NAME=DS.mappingLibraryName||"";
 
 /* ---- 组件预览里的 Token 变量：按 token.json 生成并注入每个预览 iframe，改 token.json 后预览同步变化 ---- */
 const LIVE=(()=>{const v=new Map(),put=(n,x,force)=>{if(!n||x==null||x==="")return;n=n.startsWith("--")?n:"--"+n;if(force||!v.has(n))v.set(n,x)};
@@ -1332,8 +1332,8 @@ function mapColHtml(x){const m=MAPPING&&MAPPING[x.name];if(!m)return"";
  const nameHtml2=m.url?`<a class="ct-map-link" href="${esc(m.url)}" target="_blank" rel="noopener" title="在 Pixso 中打开">${esc(name)}<\/a>`:`<span class="ct-map-link">${esc(name)}<\/span>`;
   return `<div class="ct-map-card">`+
    nameHtml2+
-  `<div class="ct-map-src">${esc(LIB_NAME||"")}<\/div>`+
-  (m.thumbnail_url?`<img class="ct-map-preview" src="${esc(absThumb(m.thumbnail_url))}" alt="${esc(name)}" loading="lazy" onerror="this.style.display='none'">`:"")+
+  `<div class="ct-map-src">${esc(m.library_name||"")}<\/div>`+
+  (m.thumbnail_url?`<div class="ct-map-preview-wrap"><img class="ct-map-preview" src="${esc(absThumb(m.thumbnail_url))}" alt="${esc(name)}" loading="lazy" onerror="this.style.display='none'"><\/div>`:"")+
   `<\/div>`}
 /* 关联列（查看/编辑通用）：有映射数据 → 卡片；无映射/未关联 → 「未关联设计组件」灰卡。
  * 查看页未发布/存量系统（json 无 mapping 键 → MAPPING=null）也恒渲染三列，与编辑页形态一致 */

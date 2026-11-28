@@ -98,7 +98,7 @@ export async function editSetup(ctx) {
   let erows = base
   const staged = new Map()
   const P = { busy: false }
-  var PUT_FIELDS = ["html_zh", "pixso_name", "pixso_guid", "pixso_category", "file_key", "component_content_key", "match_type", "status", "url", "instance_spec", "thumbnail_url"]
+  var PUT_FIELDS = ["html_zh", "pixso_name", "pixso_guid", "pixso_category", "file_key", "library_name", "component_content_key", "match_type", "status", "url", "instance_spec", "thumbnail_url"]
 
   function postParent(msg) { try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, "*") } catch (e) { } }
   function notifyDirty() { postParent({ type: "ds-dirty", dirty: staged.size > 0, count: staged.size }) }
@@ -422,24 +422,29 @@ export async function editSetup(ctx) {
       new Promise(function (r) { setTimeout(r, 1200) }),
     ]).then(function (arr) {
       var full = arr[0]
+      /* 换库检测：当前系统 file_key ≠ 新库 file_key → 换库模式（确认时全量替换，不保留旧关联） */
+      var currentFk = systemFileKey()
+      var fullFk = full.fileKey || lib.fileKey
+      W.switchingLib = !!(currentFk && fullFk && currentFk !== fullFk)
       var candidates = buildCandidates(full.components)
       var ms = matchAll(components.map(function (x) { return x.name }), candidates)
       W.results = ms.map(function (m) {
         var ex = erows[m.component_name]
-        if (ex && ex.pixso_guid && (ex.match_type === "manual" || !m.pixso_guid)) {
+        /* 换库时跳过 kept 逻辑——所有行允许被新库覆盖（匹配不上的确认时清空 pixso 字段） */
+        if (!W.switchingLib && ex && ex.pixso_guid && (ex.match_type === "manual" || !m.pixso_guid)) {
           return { component_name: m.component_name, pixso_name: ex.pixso_name, pixso_guid: ex.pixso_guid, pixso_category: ex.pixso_category || "", match_type: ex.match_type, status: ex.status || "aligned", url: ex.url || "", fileKey: ex.file_key || "", thumbnail_url: ex.thumbnail_url || null, spec: null, contentKey: null, kept: true, changed: false }
         }
         var set = m.kind === "set" && m.pixso_name ? candidates.sets.get(m.pixso_name) : null
         return {
-          component_name: m.component_name, pixso_name: m.pixso_name, pixso_guid: m.pixso_guid, pixso_category: m.pixso_category, match_type: m.match_type, status: m.status,
+          component_name: m.component_name, pixso_name: m.pixso_name, pixso_guid: m.pixso_guid, pixso_category: m.pixso_category, match_type: m.match_type, status: m.pixso_guid ? m.status : "missing",
           /* Pixso 跳转链接拼接处（模板见文件头 PIXSO_URL_BASE 注释）：fileKey 来自组件库清单，guid 为命中锚点 */
           url: m.pixso_guid && full.fileKey ? PIXSO_URL_BASE + "/design/" + full.fileKey + "?item-id=" + m.pixso_guid : "",
           fileKey: full.fileKey || "",
           /* 缩略图：命中候选的 thumbnail_url 原始相对值（渲染时 absThumb 拼 origin+/api 前缀） */
           thumbnail_url: m.pixso_thumb || null,
           spec: set ? buildInstanceSpec(set.variants) : null, contentKey: set ? set.contentKey : null, kept: false,
-          /* 已关联但缺缩略图的行重跑匹配也视为有变化——可补上 thumbnail_url */
-          changed: !!m.pixso_guid && (!ex || ex.pixso_guid !== m.pixso_guid || (m.kind === "set" && !ex.instance_spec) || (!ex.thumbnail_url && m.pixso_thumb))
+          /* 换库：所有行 changed（含未匹配行，确认时清空 pixso 字段）；同库：仅实际有变化的行 */
+          changed: W.switchingLib ? true : (!!m.pixso_guid && (!ex || ex.pixso_guid !== m.pixso_guid || (m.kind === "set" && !ex.instance_spec) || (!ex.thumbnail_url && m.pixso_thumb)))
         }
       })
       /* 结果页库卡片展示元数据（库名/版本/组件数）改读订阅列表条目——真实明细响应顶层
@@ -451,8 +456,36 @@ export async function editSetup(ctx) {
   }
 
   function confirmMatch() {
+    /* 换库确认：清空全部旧暂存（旧库 pixso 关联全清，中文名不受影响），全量写入新库数据 */
+    if (W.switchingLib) {
+      staged.clear()
+      var libName = W.matchLib ? W.matchLib.name || "" : ""
+      W.results.forEach(function (r) {
+        staged.set(r.component_name, {
+          component_name: r.component_name,
+          pixso_name: r.pixso_name || "",
+          pixso_guid: r.pixso_guid || "",
+          pixso_category: r.pixso_category || "",
+          file_key: r.fileKey || "",
+          library_name: libName,
+          match_type: "manual",
+          status: r.status || "missing",
+          url: r.url || "",
+          thumbnail_url: r.thumbnail_url || "",
+        })
+        if (r.spec) staged.get(r.component_name).instance_spec = r.spec
+        if (r.contentKey) staged.get(r.component_name).component_content_key = r.contentKey
+      })
+      W.switchingLib = false
+      closeWiz()
+      rebuildWork()
+      applyView()
+      showToast("已切换组件库，点击「发布」后应用结果")
+      return
+    }
+    /* 同库重跑：仅 stage 实际有变化且非 kept 的行（原有逻辑） */
     var items = W.results.filter(function (r) { return r.changed && !r.kept && r.pixso_guid }).map(function (r) {
-      var o = { component_name: r.component_name, pixso_name: r.pixso_name, pixso_guid: r.pixso_guid, pixso_category: r.pixso_category || "", file_key: r.fileKey, match_type: r.match_type, status: r.status, url: r.url || "" }
+      var o = { component_name: r.component_name, pixso_name: r.pixso_name, pixso_guid: r.pixso_guid, pixso_category: r.pixso_category || "", file_key: r.fileKey, library_name: W.matchLib ? W.matchLib.name || "" : "", match_type: r.match_type, status: r.status, url: r.url || "" }
       if (r.spec) o.instance_spec = r.spec
       if (r.contentKey) o.component_content_key = r.contentKey
       if (r.thumbnail_url) o.thumbnail_url = r.thumbnail_url /* 缩略图原始相对值（暂存行即带，发布时随 PUT 提交） */
@@ -502,6 +535,8 @@ export async function editSetup(ctx) {
   function openPicker() {
     var fk = systemFileKey()
     if (!fk) { openWizard(); return }
+    /* 确保订阅列表已摊平（向导未打开时编辑弹窗首次进入也能查库名） */
+    if (!W.libs.length) fetchSubscribedLibraries().then(function (s) { W.libs = flatTree(s.tree || []) }).catch(function () {})
     Pk = { q: "", groups: {}, selected: Ed.resolved ? Ed.resolved.guid : null, openCats: new Set(), openPages: new Set(), loading: true }
     root.innerHTML = '<div class="em-mask"><div class="em-dlg em-picker" onclick="event.stopPropagation()">' +
       '<div class="em-dlg-head">' +
@@ -521,7 +556,7 @@ export async function editSetup(ctx) {
     dlgFoot().querySelector("[data-em-pick-ok]").addEventListener("click", function () {
       if (!Pk.selected) return
       var sel = findPickerItem(Pk.selected)
-      if (sel) { sel.fileKey = fk; Ed.resolved = sel }
+      if (sel) { sel.fileKey = fk; sel.libraryName = lookupLibName(fk); Ed.resolved = sel }
       renderEdit()
     })
     var inp = dlgBody().querySelector("[data-em-pq]")
@@ -716,6 +751,14 @@ export async function editSetup(ctx) {
     dlgFoot().querySelector("[data-em-edit-confirm]").addEventListener("click", function () { confirmEdit() })
   }
 
+  /* 按 file_key 查订阅列表取库名（编辑弹窗 library_name 用；W.libs 可能由向导提前填充） */
+  function lookupLibName(fk) {
+    for (var i = 0; i < W.libs.length; i++) {
+      if (W.libs[i].fileKey === fk) return W.libs[i].name || W.libs[i].libraryName || ""
+    }
+    return ""
+  }
+
   function confirmEdit() {
     var c = Ed.comp
     if (!c) return
@@ -725,6 +768,7 @@ export async function editSetup(ctx) {
       item.pixso_name = Ed.resolved.name
       if (Ed.resolved.category) item.pixso_category = Ed.resolved.category
       if (Ed.resolved.fileKey) item.file_key = Ed.resolved.fileKey
+      item.library_name = Ed.resolved.libraryName || (erows[c.name] ? erows[c.name].library_name || "" : "")
       item.status = "aligned"
       item.url = PIXSO_URL_BASE + "/design/" + (Ed.resolved.fileKey || systemFileKey() || "") + "?item-id=" + Ed.resolved.guid
       if (Ed.resolved.thumb) item.thumbnail_url = Ed.resolved.thumb
