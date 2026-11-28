@@ -10,6 +10,8 @@ export interface UserInfo {
   roles: string[]
   uid: number
   userID: string
+  /** 登录时间戳（毫秒）——门户写在 userInfo 内与 account 同层 */
+  loginTime?: number
 }
 
 export function getUserInfo(): UserInfo | null {
@@ -29,13 +31,13 @@ export function isLoggedIn(): boolean {
 }
 
 /**
- * 补写登录时间：正式环境统一登录页（sign/index.html）只写 userInfo 不写 loginTime，
- * 由管理台在进入时自己写（仅缺失时写；已有值不覆盖，避免每次刷新续期）。
- * loginTime 不再用于前端判断过期——它随 getEncryptedUserData 塞进 X-User-Data 载荷，
+ * 补写登录时间：loginTime 优先从 userInfo 内取（门户同层写入）；
+ * 独立键兜底（signIn 登录页写独立键）；皆无则首次访问补写。
+ * loginTime 不用于前端判断过期——随 getEncryptedUserData 塞进 X-User-Data 载荷，
  * 由后端按 DS_LOGIN_TTL_HOURS（默认 24h）校验，过期返回 401。
  */
 export function ensureLoginTime(): void {
-  if (!localStorage.getItem(LOGIN_TIME_KEY)) {
+  if (!getUserInfo()?.loginTime && !localStorage.getItem(LOGIN_TIME_KEY)) {
     localStorage.setItem(LOGIN_TIME_KEY, String(Date.now()))
   }
 }
@@ -51,8 +53,8 @@ export async function getEncryptedUserData(): Promise<string> {
   const user = getUserInfo()
   if (!user) return ''
   const { encryptUserData } = await import('./crypto')
-  // loginTime 一并入加密载荷（缺失=0 → 后端判过期）；过期判断完全在后端
-  const loginTime = Number(localStorage.getItem(LOGIN_TIME_KEY))
+  // loginTime 优先从 userInfo 内取（门户同层写入），独立键兜底；过期判断完全在后端
+  const loginTime = user.loginTime || Number(localStorage.getItem(LOGIN_TIME_KEY))
   return encryptUserData({ ...user, loginTime })
 }
 

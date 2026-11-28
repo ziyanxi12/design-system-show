@@ -18,6 +18,8 @@ export interface UserInfo {
   roles: string[]
   uid: number
   userID: string
+  /** 登录时间戳（毫秒）——门户写在 userInfo 内与 account 同层 */
+  loginTime?: number
 }
 
 /** 宿主经 postMessage 注入的兜底用户（后发覆盖先发，支持宿主刷新身份） */
@@ -73,14 +75,16 @@ export function getUserInfo(): UserInfo | null {
 /**
  * X-User-Data 加密载荷 = userInfo + loginTime（api.md 契约；后端 AuthMiddleware 按
  * DS_LOGIN_TTL_HOURS 校验 loginTime，缺失/超时 401——实测 whitelist/check 无 loginTime 即 401）。
- * 正式环境统一登录页只写 userInfo 不写 loginTime：这里懒补写（仅缺失时，与 admin 端
- * ensureLoginTime 同模式——已有值不覆盖，避免每次刷新续期）。
+ * loginTime 优先从 userInfo 内取（门户同层写入）；独立键兜底（admin 登录页 signIn 仍写独立键）；
+ * 皆无则懒补写（首次访问）——已有值不覆盖，避免每次刷新续期。
  */
 export async function getEncryptedUserData(): Promise<string> {
   const user = getUserInfo()
   if (!user) return ""
-  if (!localStorage.getItem(LOGIN_TIME_KEY)) localStorage.setItem(LOGIN_TIME_KEY, String(Date.now()))
-  const loginTime = Number(localStorage.getItem(LOGIN_TIME_KEY))
+  const loginTime =
+    user.loginTime ||
+    Number(localStorage.getItem(LOGIN_TIME_KEY)) ||
+    (localStorage.setItem(LOGIN_TIME_KEY, String(Date.now())), Date.now())
   const { encryptUserData } = await import("./crypto")
   return encryptUserData({ ...user, loginTime })
 }

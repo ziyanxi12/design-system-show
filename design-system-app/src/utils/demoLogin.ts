@@ -31,6 +31,7 @@ export function applyDemoLogin(): void {
     localStorage.setItem("userInfo", JSON.stringify({
       ...person, deptCode: [], roleID: "", roles: [],
       uid: 0, userID: "u-" + person.account,
+      loginTime: Date.now(),
     }))
     usp.delete("demo-user")
     const rest = usp.toString()
