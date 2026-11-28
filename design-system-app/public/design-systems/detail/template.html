@@ -1057,7 +1057,6 @@ a.ct-map-link:hover{text-decoration:underline}
 .ct-op{display:flex;align-items:center;justify-content:flex-start}
 .ct-op button{border:0;background:transparent;color:var(--brand);font-size:13px;cursor:pointer;padding:0}
 .ct-op button:hover{text-decoration:underline}
-.ct-name .nm .component-zh{font-size:12px;color:var(--text-3);margin-left:6px;font-weight:400}
 /* 编辑区头按钮（关联设计组件） */
 .sec-tools .btn-em{height:32px;padding:0 16px;border-radius:999px;background:var(--brand);color:#fff;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;border:0;font-weight:500;white-space:nowrap}
 /* 弹窗（向导 760×576 / 编辑组件 809×617，Pixso 节点实测） */
@@ -1154,8 +1153,8 @@ a.ct-map-link:hover{text-decoration:underline}
 .em-pick-btn{width:100%;height:32px;border:1px solid var(--border-1);border-radius:8px;background:#fff;color:#191919;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
 .em-pick-btn:hover{border-color:var(--brand)}
 .em-pick-btn svg{width:14px;height:14px;flex-shrink:0}
-.em-pick-btn.has-val{justify-content:center;padding:0 12px}
-.em-pick-btn.has-val .em-pick-name{color:#191919}
+.em-pick-btn.has-val{justify-content:space-between;padding:0 12px}
+.em-pick-btn.has-val .em-pick-name{color:var(--brand)}
 .em-pick-l{display:flex;align-items:center;gap:8px;min-width:0}
 .em-pick-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 编辑弹窗两栏面板（头部信息区 + 分隔线 + 内容预览区） */
@@ -1232,12 +1231,13 @@ const json=p=>get(p).then(r=>r.text()).then(t=>{try{return JSON.parse(t)}catch(e
 let DS=null, BASE="";
 /* 编辑模式全局（展示端 #/design-system/{slug}/edit 进入时宿主传 edit:true + id） */
 let EDIT=false, EDIT_ON=false, redrawHook=null, SLUG="", EROWS={};let API_BASE_STR="";
-const res=p=>BASE+p;
-/* 页面主体：数据加载 + 渲染（宿主/独立两种模式复用，仅 DS/BASE 来源不同） */
+ const res=p=>BASE+p;
+ /* 页面主体：数据加载 + 渲染（宿主/独立两种模式复用，仅 DS/BASE 来源不同） */
  async function run(){
- /* 编辑模式：拉映射行（html_zh 等；匿名公开接口，仅编辑路由触发，查看路由零请求） */
- if(EDIT&&SLUG){try{const mr=await fetch(`/api/design-systems/${SLUG}/mapping`);if(mr.ok){const md=await mr.json();EROWS=Object.fromEntries((md.items||[]).map(x=>[x.component_name,x]))}}catch(e){console.warn("[edit] mapping rows fetch:",e)}}
-let D;
+ /* EROWS：从 design-system.json 的 mapping 键构建（DS 已填充后才执行；无 mapping 键 → 空对象，第三列灰卡） */
+ EROWS={}
+ if(DS.mapping&&typeof DS.mapping==="object"){for(const [name,m] of Object.entries(DS.mapping)){EROWS[name]={component_name:name,...m}}}
+ let D;
 {/* 概览 md：json.overview 相对路径 fetch（缺失/失败只影响概览栏，其他栏目照常显示） */
  let designMd="",mdErr=null;
  const ov=DS.overview;
@@ -1343,7 +1343,7 @@ function rList(key,title,list,descText){return box=>{
   const hasMap=key==="components";/* 组件表恒三列：查看页未关联/未发布也显示「映射的设计组件」列（灰卡） */
   const tableCls=`ct-table ${hasMap?"ct-table-map":""} ${isEdit?"ct-table-edit":""}`;
  const editTools=isEdit?`<button type="button" class="btn-em" data-em-wizard>${icon("link")}关联设计组件<\/button>`:"";
-  box.innerHTML=shell(key,title,descText,key==="components"?`<div style="display:flex;gap:8px;align-items:center;">${`<label class="dl-search">${icon("search")}<input placeholder="搜索组件名称" data-cq><\/label>`}${editTools}<\/div>`:"")+groupsOf(list).map(({g,items})=>`<div class="as-cat ct-cat" data-cgrp="${esc(g)}">${isFlat(list)?"":`<button type="button" class="as-cat-h ct-group-toggle" aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button>`}<div class="${tableCls}"><div class="ct-row ct-th"><div>名称<\/div><div>预览<\/div>${hasMap?"<div>映射的设计组件<\/div>":""}${isEdit?"<div>操作<\/div>":""}<\/div>${items.map(x=>{const zh=isEdit&&EROWS[x.name]&&EROWS[x.name].html_zh?`<span class="component-zh">${esc(EROWS[x.name].html_zh)}<\/span>`:"";return `<div class="ct-row cp-block" id="${key}-${esc(x.id)}" data-q="${esc((x.name+(MAPPING&&MAPPING[x.name]&&MAPPING[x.name].pixso_name?" "+MAPPING[x.name].pixso_name:"")).toLowerCase())}"><div class="ct-name"><div class="nm">${nameHtml(x)}${zh}<\/div><\/div><div class="ct-preview">${x.html?`<iframe class="cp-frame" src="${esc(res(x.html))}" style="height:${Math.max(80,px(x.height)||160)}px" title="${esc(x.name)}" loading="lazy"><\/iframe>`:`<div class="ct-empty">暂无预览：本次未生成，原因见转化报告<\/div>`}<\/div>${hasMap?`<div class="ct-mapcol">${mapColAuto(x)}<\/div>`:""}${isEdit?`<div class="ct-op"><button data-em-edit="${esc(x.name)}">编辑<\/button><\/div>`:""}<\/div>`}).join("")}<\/div><\/div>`).join("");
+  box.innerHTML=shell(key,title,descText,key==="components"?`<div style="display:flex;gap:8px;align-items:center;">${`<label class="dl-search">${icon("search")}<input placeholder="搜索组件名称" data-cq><\/label>`}${editTools}<\/div>`:"")+groupsOf(list).map(({g,items})=>`<div class="as-cat ct-cat" data-cgrp="${esc(g)}">${isFlat(list)?"":`<button type="button" class="as-cat-h ct-group-toggle" aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button>`}<div class="${tableCls}"><div class="ct-row ct-th"><div>名称<\/div><div>预览<\/div>${hasMap?"<div>映射的设计组件<\/div>":""}${isEdit?"<div>操作<\/div>":""}<\/div>${items.map(x=>{const zhVal=(EROWS[x.name]&&EROWS[x.name].html_zh)||x.zh||"";const nmHtml=`<span class="component-name-cn">${zhVal?esc(zhVal)+" ":""}${esc(x.name)}<\/span>`;return `<div class="ct-row cp-block" id="${key}-${esc(x.id)}" data-q="${esc((x.name+(MAPPING&&MAPPING[x.name]&&MAPPING[x.name].pixso_name?" "+MAPPING[x.name].pixso_name:"")).toLowerCase())}"><div class="ct-name"><div class="nm">${nmHtml}<\/div><\/div><div class="ct-preview">${x.html?`<iframe class="cp-frame" src="${esc(res(x.html))}" style="height:${Math.max(80,px(x.height)||160)}px" title="${esc(x.name)}" loading="lazy"><\/iframe>`:`<div class="ct-empty">暂无预览：本次未生成，原因见转化报告<\/div>`}<\/div>${hasMap?`<div class="ct-mapcol">${mapColAuto(x)}<\/div>`:""}${isEdit?`<div class="ct-op"><button data-em-edit="${esc(x.name)}">编辑<\/button><\/div>`:""}<\/div>`}).join("")}<\/div><\/div>`).join("");
   box.addEventListener("click",e=>{const t=e.target.closest(".ct-group-toggle");if(!t)return;const o=t.getAttribute("aria-expanded")==="true";t.setAttribute("aria-expanded",String(!o));t.nextElementSibling.hidden=o});
   const q=$("[data-cq]",box);if(q)q.oninput=()=>{const v=q.value.trim().toLowerCase();$$(".cp-block",box).forEach(r=>r.hidden=!!v&&!r.dataset.q.includes(v));$$("[data-cgrp]",box).forEach(c=>c.hidden=!$(".cp-block:not([hidden])",c))}}}
 /* 预览 iframe 高度：预览页通过 postMessage 上报（v4 组件 html 自带变体切换 + 高度上报，
@@ -1357,7 +1357,7 @@ const R={overview:rOverview,color:rColor,typography:rType,spacing:rScale("spacin
  patterns:D.patterns.length?rList("patterns","Pattern",D.patterns,(isFlat(D.patterns)?`${D.patterns.length} 个页面模式；源规范没有给 Pattern 分类。`:`${D.patterns.length} 个页面模式，按源规范的 ${catCount(D.patterns)} 个分类排列。`)):emptySec("patterns","Pattern","源规范没有提供 Pattern（页面模式），本栏为空。")};
 
 /* 外壳：Demo 详情页（头部 + 左侧导航 + 连续滚动的栏目卡片） */
-const navTree=(key,list)=>isFlat(list)?`<div class="dsd-sub">${list.map(x=>`<button data-jump="${key}-${esc(x.id)}" title="${esc(x.name)}">${esc(x.name)}</button>`).join("")}<\/div>`:`<div class="dsd-sub">${groupsOf(list).map(({g,items})=>`<div class="nav-category"><button class="sub-h" data-ccat aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button><div class="nav-category-items">${items.map(x=>`<button class="sub-l2" data-jump="${key}-${esc(x.id)}" title="${esc(x.name)}">${esc(x.name)}</button>`).join("")}<\/div><\/div>`).join("")}<\/div>`;
+const navTree=(key,list)=>isFlat(list)?`<div class="dsd-sub">${list.map(x=>{const zhVal=(EROWS[x.name]&&EROWS[x.name].html_zh)||x.zh||"";const lbl=zhVal?esc(zhVal)+" "+esc(x.name):esc(x.name);return `<button data-jump="${key}-${esc(x.id)}" title="${lbl}">${lbl}</button>`}).join("")}<\/div>`:`<div class="dsd-sub">${groupsOf(list).map(({g,items})=>`<div class="nav-category"><button class="sub-h" data-ccat aria-expanded="true"><span>${esc(g)}<\/span><span class="category-chevron">${icon("chev-down")}<\/span><\/button><div class="nav-category-items">${items.map(x=>{const zhVal=(EROWS[x.name]&&EROWS[x.name].html_zh)||x.zh||"";const lbl=zhVal?esc(zhVal)+" "+esc(x.name):esc(x.name);return `<button class="sub-l2" data-jump="${key}-${esc(x.id)}" title="${lbl}">${lbl}</button>`}).join("")}<\/div><\/div>`).join("")}<\/div>`;
 
 $("#app").innerHTML=`<div class="dsd-body"><nav class="dsd-nav">${SECTIONS.map(([k,l,ic])=>k==="components"||k==="patterns"?`<div class="nav-grp ${k==="components"?"open":""}"><button data-sec="${k}">${icon(ic)}${l}<span class="chev" data-toggle-sub>${icon("chev-down")}<\/span><\/button>${navTree(k,k==="components"?D.components:D.patterns)}<\/div>`:`<button data-sec="${k}">${icon(ic)}${l}<\/button>`).join("")}<\/nav>
  <div class="dsd-main" data-sec-main>${SECTIONS.map(([k])=>`<section class="sec-card" id="sec-${k}"><\/section>`).join("")}<\/div><\/div>`;

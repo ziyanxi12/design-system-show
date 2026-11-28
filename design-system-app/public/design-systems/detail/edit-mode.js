@@ -111,8 +111,7 @@ export async function editSetup(ctx) {
   }
   function applyView() { if (applyErows) applyErows(erows); else redraw(); notifyDirty() }
 
-  /* 订阅库列表缓存（预留：正式环境可能需要展示当前库名） */
-  var libListP = fetchSubscribedLibraries().then(function (s) { return flatTree(s.tree || []) }).catch(function () { return [] })
+  /* 订阅库列表：不再预取——openWizard/guidIndex 时按需调用（用户主动操作才触发） */
 
   /* 系统共用 file_key：工作态（erows = base⊕staged）已关联行里出现最多的 file_key——
    * 系统内组件默认共用一个库，取众数兜住个别历史杂值；计入暂存层：向导确认后未发布也能
@@ -380,7 +379,7 @@ export async function editSetup(ctx) {
     if (W.matchLib) {
       libCard = '<div class="em-sel-lib"><span class="em-lib-ic">' + IC.lib + "</span>" +
         '<span class="em-sel-lib-txt"><span class="em-sel-lib-name" title="' + esc(W.matchLib.name) + '">' + esc(W.matchLib.name) + "</span>" +
-        '<span class="em-sel-lib-meta">版本 ' + esc(W.matchLib.version || "—") + " · " + (W.matchLib.componentCount ?? "?") + '个组件</span></span>' +
+        '<span class="em-sel-lib-meta">' + (W.matchLib.componentCount ?? "?") + '个组件</span></span>' +
         "</div>"
     }
     var tabs = '<div class="em-tabs">' +
@@ -445,6 +444,7 @@ export async function editSetup(ctx) {
       })
       /* 结果页库卡片展示元数据（库名/版本/组件数）改读订阅列表条目——真实明细响应顶层
          无 name/version/componentCount（仅 file_key/components 等），full 只作数据源 */
+      lib.componentCount = candidates.sets.size + candidates.plains.size
       W.matchLib = lib; W.stage = "result"; W.tab = "all"
       showResult()
     }).catch(function (e) { W.err = "匹配失败：" + e.message; W.stage = "select"; fillSelect() })
@@ -460,7 +460,7 @@ export async function editSetup(ctx) {
     })
     if (!items.length) {
       closeWiz() /* → hideToast() 清残留 */
-      showToast("设计组件已关联，点击「保存」后应用结果")
+      showToast("设计组件已关联，点击「发布」后应用结果")
       return
     }
     /* 暂存：不 PUT——写 staged 层，工作态即时上屏（宿主发布按钮亮起），发布时统一提交 */
@@ -471,7 +471,7 @@ export async function editSetup(ctx) {
     closeWiz()
     rebuildWork()
     applyView()
-    showToast("设计组件已关联，点击「保存」后应用结果")
+    showToast("设计组件已关联，点击「发布」后应用结果")
   }
 
   /* ═════ 编辑组件弹窗 ═════ */
@@ -675,7 +675,7 @@ export async function editSetup(ctx) {
       /* 两态：未关联 = [链接图标] 选择关联组件（居中）；
        * 已关联 = [链接图标+组件名] 紧贴成组靠左 + 切换图标贴右缘（space-between） */
       '<button type="button" class="em-pick-btn' + (Ed.resolved ? " has-val" : "") + '" data-em-pick>' +
-      (Ed.resolved ? '<span class="em-pick-l">' + IC.link + '<span class="em-pick-name">' + esc(Ed.resolved.name) + "</span></span>" : IC.link + "选择关联组件") +
+      (Ed.resolved ? '<span class="em-pick-l">' + IC.link + '<span class="em-pick-name">' + esc(Ed.resolved.name) + "</span></span>" + IC.swap : IC.link + "选择关联组件") +
       "</button>" +
       "</div></div>" +
       '<div class="em-ro">' +
@@ -737,7 +737,7 @@ export async function editSetup(ctx) {
     closeEdit()
     rebuildWork()
     applyView()
-    showToast("设计组件已关联，点击「保存」后应用结果")
+    showToast("设计组件已关联，点击「发布」后应用结果")
   }
 
   /* ═══ 发布 / 放弃（宿主顶部按钮经 postMessage 触发） ═══ */
